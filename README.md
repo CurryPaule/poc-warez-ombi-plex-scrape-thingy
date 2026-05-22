@@ -89,12 +89,30 @@ The table ID is the `md_yyy` part.
 ## Running locally
 
 ```bash
+# Install dependencies
 npm install
-cp .env.example .env
-# edit .env
 
-npm run scrape:incremental
-npm run scrape:search
+# Set up environment
+cp .env.example .env
+# edit .env with your NocoDB credentials
+
+# Run in dev mode (no build step needed)
+npx ts-node src/index.ts incremental   # monitor new releases
+npx ts-node src/index.ts search        # search for watchlist items
+
+# Or build first, then run
+npm run build
+npm run start -- incremental
+npm run start -- search
+```
+
+### Test scripts
+
+```bash
+npm run test:warez                            # Test warez.cx API connectivity
+npm run test:warez -- --search "Breaking Bad" # Test search with a query
+npm run test:nocodb                           # Test NocoDB connection
+npm run test:match                            # Dry-run matcher against live data
 ```
 
 ## Docker
