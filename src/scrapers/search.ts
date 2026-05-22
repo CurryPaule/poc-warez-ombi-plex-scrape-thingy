@@ -3,6 +3,12 @@ import type { MatchRow, WatchlistRow } from '../nocodb/types';
 import type { WarezClient } from '../warez/api';
 import type { WarezSearchEntry } from '../warez/types';
 import type { Config } from '../config';
+import {
+  normalizeTitle,
+  matchesQuality,
+  meetsLanguage,
+  matchesTags,
+} from '../matcher';
 
 /**
  * Build the search query for a watchlist item.
@@ -22,25 +28,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/** Normalize a title for comparison */
-function normalizeTitle(raw: string): string {
-  return raw.toLowerCase().replace(/[._\-]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 /**
  * Check if a search entry matches a watchlist item.
- * Uses IMDB/TMDB ID when available, falls back to title match.
+ * Reuses shared filter functions from matcher.ts.
+ *
+ * Note: search entries are entry-level (no quality, no release-specific fulltitle),
+ * so items with Quality or Tags set will not match via search — those require
+ * the incremental scraper which has release-level detail.
  */
 function entryMatchesWatchlistItem(entry: WarezSearchEntry, item: WatchlistRow): boolean {
   // Type must match
   if (item.Type && entry.type !== item.Type) return false;
 
+  // Quality filter — search entries have no quality info, so if a specific
+  // quality is required, we can't verify it and must skip
+  if (!matchesQuality(null, item.Quality)) return false;
+
   // Language filter
-  if (item.LangRequired) {
-    const required = item.LangRequired.split(',').map(l => l.trim().toUpperCase()).filter(Boolean);
-    const available = (entry.lang ?? []).map(l => l.toUpperCase());
-    if (!required.every(r => available.includes(r))) return false;
-  }
+  if (!meetsLanguage(entry.lang ?? [], item.LangRequired)) return false;
+
+  // Tags filter — search entry fulltitles are just titles (e.g. "Dutton Ranch"),
+  // not release names, so tags like HDR/H265/uploader won't match
+  if (!matchesTags(entry.fulltitle, item.Tags)) return false;
 
   // ID-based match (most reliable)
   if (item.ImdbId && entry.options?.imdb_id) {
