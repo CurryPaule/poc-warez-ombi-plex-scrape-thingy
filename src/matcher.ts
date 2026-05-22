@@ -1,0 +1,166 @@
+import type { WarezRelease } from './warez/types';
+import type { WatchlistRow } from './nocodb/types';
+
+/** Quality tiers in ascending order */
+const QUALITY_TIERS: Record<string, number> = {
+  '720p': 1,
+  '1080p': 2,
+  '4k': 3,
+  '2160p': 3,
+};
+
+/** Normalize a title for comparison: lowercase, replace separators with space, strip trailing year/junk */
+export function normalizeTitle(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[._\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extract the clean show/movie title from a warez fulltitle.
+ * e.g. "Ladies.First.2026.German.DL.2160p.DV..." → "ladies first"
+ * e.g. "Mating.Season.S01.GERMAN.DL..." → "mating season"
+ */
+export function extractTitleFromFulltitle(fulltitle: string): string {
+  const normalized = normalizeTitle(fulltitle);
+
+  // Cut off at common release markers
+  const cutPatterns = [
+    /\b\d{4}\b/,              // year (e.g. 2026)
+    /\bs\d{2}\b/,             // season marker (e.g. s01)
+    /\b(?:german|english|french|spanish|italian|dutch)\b/i,
+    /\b(?:dl|multi)\b/i,
+    /\b(?:720p|1080p|2160p|4k|uhd|hd|sd)\b/i,
+    /\b(?:web|bluray|blu-ray|dvd|hdtv|webrip|hdcam)\b/i,
+    /\b(?:h264|h265|x264|x265|hevc|avc|xvid)\b/i,
+  ];
+
+  let cutIdx = normalized.length;
+  for (const pattern of cutPatterns) {
+    const match = pattern.exec(normalized);
+    if (match && match.index < cutIdx) {
+      cutIdx = match.index;
+    }
+  }
+
+  return normalized.slice(0, cutIdx).trim();
+}
+
+/** Check if a release meets the quality minimum requirement */
+export function meetsQuality(releaseQuality: string | null, minQuality: string | undefined | null): boolean {
+  if (!minQuality) return true;
+  if (!releaseQuality) return false;
+
+  const relTier = QUALITY_TIERS[releaseQuality.toLowerCase()] ?? 0;
+  const minTier = QUALITY_TIERS[minQuality.toLowerCase()] ?? 0;
+  return relTier >= minTier;
+}
+
+/** Check if a release includes all required languages */
+export function meetsLanguage(releaseLangs: string[], langRequired: string | undefined | null): boolean {
+  if (!langRequired) return true;
+  const required = langRequired.split(',').map(l => l.trim().toUpperCase()).filter(Boolean);
+  const available = releaseLangs.map(l => l.toUpperCase());
+  return required.every(req => available.includes(req));
+}
+
+/** Extract season number from fulltitle, e.g. "S02" → 2, null if not found */
+export function extractSeason(fulltitle: string): number | null {
+  const match = /\bS(\d{2})\b/i.exec(fulltitle);
+  if (!match) return null;
+  return parseInt(match[1]!, 10);
+}
+
+/** Extract episode number from fulltitle, e.g. "S02E05" → 5, null if not found or season pack */
+export function extractEpisode(fulltitle: string): number | null {
+  const match = /\bS\d{2}E(\d{2,3})\b/i.exec(fulltitle);
+  if (!match) return null;
+  return parseInt(match[1]!, 10);
+}
+
+/** Extract season + episode as a dedup key, e.g. "S02E05" → "S02E05", "S02" → "S02", null if none */
+export function extractSeasonEpisodeKey(fulltitle: string): string | null {
+  // Try S01E05 first
+  const full = /\b(S\d{2}E\d{2,3})\b/i.exec(fulltitle);
+  if (full) return full[1]!.toUpperCase();
+  // Try season-only (season pack)
+  const season = /\b(S\d{2})\b/i.exec(fulltitle);
+  if (season) return season[1]!.toUpperCase();
+  return null;
+}
+
+export interface MatchResult {
+  matched: boolean;
+  watchlistItem: WatchlistRow;
+  reason?: string;
+}
+
+/**
+ * Check if a warez release matches a watchlist item.
+ * Priority: IMDB/TMDB ID exact match → normalized title match.
+ */
+export function matchRelease(release: WarezRelease, watchlistItem: WatchlistRow): MatchResult {
+  const opts = release.entry?.options;
+
+  // ── Type check ──────────────────────────────────────────────────────────────
+  if (release.type !== watchlistItem.Type) {
+    return { matched: false, watchlistItem, reason: 'type mismatch' };
+  }
+
+  // ── Quality filter ──────────────────────────────────────────────────────────
+  if (!meetsQuality(release.quality, watchlistItem.MinQuality)) {
+    return { matched: false, watchlistItem, reason: `quality ${release.quality} < min ${watchlistItem.MinQuality}` };
+  }
+
+  // ── Language filter ─────────────────────────────────────────────────────────
+  if (!meetsLanguage(release.lang, watchlistItem.LangRequired)) {
+    return { matched: false, watchlistItem, reason: `missing required langs ${watchlistItem.LangRequired}` };
+  }
+
+  // ── Season filter (series only) ─────────────────────────────────────────────
+  if (watchlistItem.Type === 'series' && watchlistItem.Season != null) {
+    const releaseSeason = extractSeason(release.fulltitle);
+    if (releaseSeason !== null && releaseSeason !== watchlistItem.Season) {
+      return { matched: false, watchlistItem, reason: `season ${releaseSeason} ≠ wanted ${watchlistItem.Season}` };
+    }
+  }
+
+  // ── ID-based match (most reliable) ──────────────────────────────────────────
+  if (watchlistItem.ImdbId && opts?.imdb_id) {
+    if (opts.imdb_id === watchlistItem.ImdbId) {
+      return { matched: true, watchlistItem, reason: 'imdb_id match' };
+    }
+    return { matched: false, watchlistItem, reason: 'imdb_id mismatch' };
+  }
+
+  if (watchlistItem.TmdbId && opts?.tmdb_id) {
+    if (opts.tmdb_id === watchlistItem.TmdbId) {
+      return { matched: true, watchlistItem, reason: 'tmdb_id match' };
+    }
+    return { matched: false, watchlistItem, reason: 'tmdb_id mismatch' };
+  }
+
+  // ── Title-based match (fallback) ─────────────────────────────────────────────
+  const watchTitle = normalizeTitle(watchlistItem.Title);
+  const releaseTitle = normalizeTitle(release.title);
+  const extractedTitle = extractTitleFromFulltitle(release.fulltitle);
+
+  if (releaseTitle === watchTitle || extractedTitle === watchTitle) {
+    return { matched: true, watchlistItem, reason: 'title match' };
+  }
+
+  // Substring match: watchlist title contained in release title (handles subtitle/year variations)
+  if (releaseTitle.includes(watchTitle) || watchTitle.includes(releaseTitle)) {
+    return { matched: true, watchlistItem, reason: 'title substring match' };
+  }
+
+  return { matched: false, watchlistItem, reason: 'no title match' };
+}
+
+/** Find all watchlist items that match a given release */
+export function findMatches(release: WarezRelease, watchlist: WatchlistRow[]): WatchlistRow[] {
+  return watchlist
+    .filter(item => matchRelease(release, item).matched);
+}

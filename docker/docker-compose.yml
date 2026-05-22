@@ -1,0 +1,22 @@
+services:
+  scraper:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: warez-plex-scraper
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    volumes:
+      - scraper-logs:/var/log
+    # Optional: if NocoDB runs in the same Docker network
+    # networks:
+    #   - nocodb-net
+
+volumes:
+  scraper-logs:
+
+# networks:
+#   nocodb-net:
+#     external: true
+#     name: nocodb_default

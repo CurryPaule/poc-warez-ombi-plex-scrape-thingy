@@ -1,0 +1,25 @@
+{
+  "name": "warez-plex-thingy",
+  "version": "1.0.0",
+  "description": "Warez.cx scraper that syncs findings to NocoDB",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "scrape:incremental": "ts-node src/index.ts incremental",
+    "scrape:search": "ts-node src/index.ts search",
+    "test:warez": "ts-node src/scripts/test-warez.ts",
+    "test:nocodb": "ts-node src/scripts/test-nocodb.ts",
+    "test:match": "ts-node src/scripts/test-match.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}
