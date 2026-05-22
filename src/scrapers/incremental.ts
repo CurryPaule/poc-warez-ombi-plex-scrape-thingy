@@ -58,13 +58,14 @@ export async function runIncrementalScraper(
 
   let totalChecked = 0;
   let totalMatched = 0;
-  let stopEarly = false;
   const runStartTs = new Date().toISOString();
   const typeMismatchWarned = new Set<string>();
 
+  // The feed is sorted by sort_date (which bumps when episodes are added to
+  // season packs), NOT by created_at. Use sort_date for the pagination cutoff
+  // so we don't stop early when updated series appear at the top of the feed.
   const stopCondition = (batch: WarezRelease[]): boolean => {
-    // Stop paginating when we've passed the last-run timestamp
-    return batch.some(r => new Date(r.created_at).getTime() <= lastRunTs);
+    return batch.every(r => new Date(r.sort_date).getTime() <= lastRunTs);
   };
 
   const releaseStream = warez.streamReleases(
@@ -84,10 +85,9 @@ export async function runIncrementalScraper(
       // Skip non-media
       if (release.type !== 'movie' && release.type !== 'series') continue;
 
-      // Stop once we've reached already-seen content
-      if (lastRunTs > 0 && new Date(release.created_at).getTime() <= lastRunTs) {
-        stopEarly = true;
-        break;
+      // Skip releases whose sort_date is before our last run
+      if (lastRunTs > 0 && new Date(release.sort_date).getTime() <= lastRunTs) {
+        continue;
       }
 
       totalChecked++;
@@ -148,7 +148,6 @@ export async function runIncrementalScraper(
         console.log(`  ✅ Match: [${watchlistItem.Title}] ← "${release.fulltitle}"${seasonEpisodeKey ? ` (${seasonEpisodeKey})` : ''}`);
       }
     }
-    if (stopEarly) break;
   }
 
   // Update checkpoint
