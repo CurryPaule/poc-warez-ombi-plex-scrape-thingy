@@ -25,7 +25,7 @@ async function main() {
   if (watchlist.length > 0) {
     console.log('\n  Active watchlist items:');
     for (const item of watchlist) {
-      const qual = item.MinQuality ? ` | min: ${item.MinQuality}` : '';
+      const qual = item.Quality ? ` | quality: ${item.Quality}` : '';
       const lang = item.LangRequired ? ` | lang: ${item.LangRequired}` : '';
       const season = item.Season != null ? ` S${String(item.Season).padStart(2, '0')}` : '';
       const lastEp = item.LastEpisodeFound != null ? ` (last ep: E${String(item.LastEpisodeFound).padStart(2, '0')})` : '';

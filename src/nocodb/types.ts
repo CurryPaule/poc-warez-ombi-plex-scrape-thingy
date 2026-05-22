@@ -10,7 +10,7 @@ export interface WatchlistRow {
   TmdbId?: number;
   Active: boolean | number;       // NocoDB checkbox = 0/1
   DeactivateOnMatch: boolean | number;
-  MinQuality?: '720p' | '1080p' | '2160p' | '';
+  Quality?: '720p' | '1080p' | '2160p' | '';
   LangRequired?: string;          // comma-separated, e.g. "GER,ENG"
   Season?: number;                // null = any season
   LastEpisodeFound?: number;      // highest episode number matched so far

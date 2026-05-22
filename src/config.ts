@@ -14,7 +14,7 @@ const ConfigSchema = z.object({
 
   MAX_INCREMENTAL_PAGES: z.coerce.number().int().nonnegative().default(20),
   SEARCH_DELAY_MS: z.coerce.number().int().nonnegative().default(1500),
-  DEFAULT_QUALITY_MIN: z.enum(['720p', '1080p', '2160p', '']).default(''),
+  DEFAULT_QUALITY: z.enum(['720p', '1080p', '2160p', '']).default(''),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

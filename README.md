@@ -24,7 +24,7 @@ Create three tables in NocoDB manually:
 | `type` | Single Select | `movie` or `series` |
 | `imdb_id` | Text | Optional — enables precise matching |
 | `tmdb_id` | Number | Optional |
-| `quality_min` | Single Select | `720p`, `1080p`, `2160p` (leave blank for any) |
+| `quality` | Single Select | `720p`, `1080p`, `2160p` (leave blank for any) |
 | `lang_required` | Text | Comma-separated e.g. `GER,ENG` |
 | `season` | Number | Series season number (blank = any) |
 | `is_active` | Checkbox | Uncheck to pause monitoring |
@@ -136,7 +136,7 @@ If NocoDB runs in Docker too, uncomment the `networks` section in `docker/docker
 
 1. **IMDB/TMDB ID** — if both the watchlist item and the warez release carry an ID, it's compared exactly. This is the most reliable match.
 2. **Normalized title** — lowercased, dots/dashes stripped, then compared. The release's `title` field (provided by warez, clean) and an extracted version of `fulltitle` are both checked.
-3. **Quality filter** — tiers: `720p < 1080p < 2160p`. Set `quality_min` to reject lower-quality releases.
+3. **Quality filter** — tiers: `720p`, `1080p`, `2160p`. Set `quality` to match only that exact quality tier.
 4. **Language filter** — `lang_required = GER,ENG` means the release must include both German and English audio.
 5. **Season filter** — for series, set `season = 2` to only match season 2 releases.
 

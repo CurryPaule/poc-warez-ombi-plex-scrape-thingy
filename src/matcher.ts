@@ -48,14 +48,14 @@ export function extractTitleFromFulltitle(fulltitle: string): string {
   return normalized.slice(0, cutIdx).trim();
 }
 
-/** Check if a release meets the quality minimum requirement */
-export function meetsQuality(releaseQuality: string | null, minQuality: string | undefined | null): boolean {
-  if (!minQuality) return true;
+/** Check if a release matches the required quality exactly */
+export function matchesQuality(releaseQuality: string | null, requiredQuality: string | undefined | null): boolean {
+  if (!requiredQuality) return true;
   if (!releaseQuality) return false;
 
   const relTier = QUALITY_TIERS[releaseQuality.toLowerCase()] ?? 0;
-  const minTier = QUALITY_TIERS[minQuality.toLowerCase()] ?? 0;
-  return relTier >= minTier;
+  const reqTier = QUALITY_TIERS[requiredQuality.toLowerCase()] ?? 0;
+  return relTier === reqTier;
 }
 
 /** Check if a release includes all required languages */
@@ -110,8 +110,8 @@ export function matchRelease(release: WarezRelease, watchlistItem: WatchlistRow)
   }
 
   // ── Quality filter ──────────────────────────────────────────────────────────
-  if (!meetsQuality(release.quality, watchlistItem.MinQuality)) {
-    return { matched: false, watchlistItem, reason: `quality ${release.quality} < min ${watchlistItem.MinQuality}` };
+  if (!matchesQuality(release.quality, watchlistItem.Quality)) {
+    return { matched: false, watchlistItem, reason: `quality ${release.quality} ≠ wanted ${watchlistItem.Quality}` };
   }
 
   // ── Language filter ─────────────────────────────────────────────────────────

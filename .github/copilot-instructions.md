@@ -34,7 +34,7 @@ This is a TypeScript + Playwright scraping solution that monitors **warez.cx** f
 
 **Watchlist** (`mdvv8x7pxr4vv93`):
 - Title, Type (movie/series), ImdbId, TmdbId, Active, DeactivateOnMatch
-- MinQuality, LangRequired, Season, LastEpisodeFound, LastMatchedAt, Notes
+- Quality, LangRequired, Season, LastEpisodeFound, LastMatchedAt, Notes
 
 **Matches** (`mrg4iycb4esq3ma`):
 - WatchlistId, WarezId, WarezUid, Title, Fulltitle, Type
@@ -61,7 +61,7 @@ This prevents duplicate match records when multiple uploaders upload the same co
 
 Priority order:
 1. Type must match (movie/series)
-2. Quality filter (720p < 1080p < 2160p tiers)
+2. Quality filter (exact match when set)
 3. Language filter (all required langs must be present)
 4. Season filter (regex `S\d{2}` from fulltitle)
 5. IMDB/TMDB ID exact match (most reliable)
@@ -129,7 +129,7 @@ npm run start -- incremental
 | `WAREZ_API_BASE` | ❌ | Default: `https://api.warez.cx` |
 | `MAX_INCREMENTAL_PAGES` | ❌ | Default: 20 |
 | `SEARCH_DELAY_MS` | ❌ | Default: 1500 |
-| `DEFAULT_QUALITY_MIN` | ❌ | Default: (empty = any) |
+| `DEFAULT_QUALITY` | ❌ | Default: (empty = any) |
 
 ## Important Technical Notes
 
