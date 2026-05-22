@@ -1,11 +1,35 @@
 import type { NocoDbClient } from '../nocodb/client';
-import type { MatchRow } from '../nocodb/types';
+import type { MatchRow, WatchlistRow } from '../nocodb/types';
 import type { WarezClient } from '../warez/api';
 import type { WarezRelease } from '../warez/types';
 import { findMatches, extractSeason, extractEpisode, extractSeasonEpisodeKey } from '../matcher';
 import type { Config } from '../config';
 
 const STATE_KEY = 'last_incremental_run_at';
+
+/** Detect and warn about releases whose IMDB/TMDB ID matches a watchlist item with a different type */
+function warnTypeMismatches(release: WarezRelease, watchlist: WatchlistRow[], warned: Set<string>): void {
+  const opts = release.entry?.options;
+  for (const w of watchlist) {
+    if (w.Type === release.type) continue;
+
+    let idMatch: string | null = null;
+    if (w.ImdbId && opts?.imdb_id && w.ImdbId === opts.imdb_id) {
+      idMatch = `IMDB: ${w.ImdbId}`;
+    } else if (w.TmdbId && opts?.tmdb_id && w.TmdbId === opts.tmdb_id) {
+      idMatch = `TMDB: ${w.TmdbId}`;
+    }
+
+    if (idMatch) {
+      const key = `${w.Title}:${idMatch}`;
+      if (!warned.has(key)) {
+        warned.add(key);
+        console.log(`  ⚠️  Type mismatch: "${w.Title}" is "${w.Type}" in watchlist but "${release.type}" in feed (${idMatch})`);
+        console.log(`      → Update the watchlist Type to "${release.type}" to enable matching`);
+      }
+    }
+  }
+}
 
 /**
  * Incremental scraper: fetch all new releases since the last run and match
@@ -36,6 +60,7 @@ export async function runIncrementalScraper(
   let totalMatched = 0;
   let stopEarly = false;
   const runStartTs = new Date().toISOString();
+  const typeMismatchWarned = new Set<string>();
 
   const stopCondition = (batch: WarezRelease[]): boolean => {
     // Stop paginating when we've passed the last-run timestamp
@@ -66,6 +91,7 @@ export async function runIncrementalScraper(
       }
 
       totalChecked++;
+      warnTypeMismatches(release, watchlist, typeMismatchWarned);
       const matched = findMatches(release, watchlist);
 
       for (const watchlistItem of matched) {
