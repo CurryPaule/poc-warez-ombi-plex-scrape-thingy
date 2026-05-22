@@ -34,7 +34,7 @@ This is a TypeScript + Playwright scraping solution that monitors **warez.cx** f
 
 **Watchlist** (`mdvv8x7pxr4vv93`):
 - Title, Type (movie/series), ImdbId, TmdbId, Active, DeactivateOnMatch
-- Quality, LangRequired, Season, LastEpisodeFound, LastMatchedAt, Notes
+- Quality, LangRequired, Tags, Season, LastEpisodeFound, LastMatchedAt, Notes
 
 **Matches** (`mrg4iycb4esq3ma`):
 - WatchlistId, WarezId, WarezUid, Title, Fulltitle, Type

@@ -66,6 +66,15 @@ export function meetsLanguage(releaseLangs: string[], langRequired: string | und
   return required.every(req => available.includes(req));
 }
 
+/** Check if a release fulltitle contains all required tags (case-insensitive, AND logic) */
+export function matchesTags(fulltitle: string, tags: string | undefined | null): boolean {
+  if (!tags) return true;
+  const required = tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+  if (required.length === 0) return true;
+  const ft = fulltitle.toLowerCase();
+  return required.every(tag => ft.includes(tag));
+}
+
 /** Extract season number from fulltitle, e.g. "S02" → 2, null if not found */
 export function extractSeason(fulltitle: string): number | null {
   const match = /\bS(\d{2})\b/i.exec(fulltitle);
@@ -117,6 +126,11 @@ export function matchRelease(release: WarezRelease, watchlistItem: WatchlistRow)
   // ── Language filter ─────────────────────────────────────────────────────────
   if (!meetsLanguage(release.lang, watchlistItem.LangRequired)) {
     return { matched: false, watchlistItem, reason: `missing required langs ${watchlistItem.LangRequired}` };
+  }
+
+  // ── Tags filter (all tags must appear in fulltitle) ─────────────────────────
+  if (!matchesTags(release.fulltitle, watchlistItem.Tags)) {
+    return { matched: false, watchlistItem, reason: `missing required tags ${watchlistItem.Tags}` };
   }
 
   // ── Season filter (series only) ─────────────────────────────────────────────
