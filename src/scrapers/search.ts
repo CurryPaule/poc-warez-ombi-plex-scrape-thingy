@@ -39,7 +39,7 @@ function entryMatchesWatchlistItem(entry: WarezSearchEntry, item: WatchlistRow):
   if (item.Type && entry.type !== item.Type) return false;
 
   // Language filter — search entries do carry language info
-  if (!meetsLanguage(entry.lang ?? [], item.LangRequired)) return false;
+  if (!meetsLanguage(entry.lang, item.LangRequired, entry.fulltitle)) return false;
 
   // Quality and Tags are intentionally NOT checked here:
   // search entries have no quality field and their fulltitle is just the
@@ -79,16 +79,19 @@ export async function runSearchScraper(
   console.log('▶ Search scraper starting...');
 
   const watchlist = await nocodb.getActiveWatchlist();
-  console.log(`  Watchlist: ${watchlist.length} active item(s)`);
+  const alreadyMatched = await nocodb.getWatchlistIdsWithActiveMatches();
+  const toSearch = watchlist.filter(item => !alreadyMatched.has(item.Id));
 
-  if (watchlist.length === 0) {
-    console.log('  No active watchlist items — nothing to do.');
+  console.log(`  Watchlist: ${watchlist.length} active item(s), ${alreadyMatched.size} already matched → ${toSearch.length} to search`);
+
+  if (toSearch.length === 0) {
+    console.log('  Nothing to search.');
     return;
   }
 
   let totalMatched = 0;
 
-  for (const item of watchlist) {
+  for (const item of toSearch) {
     const query = buildSearchQuery(item);
     console.log(`  🔍 Searching: "${query}" (${item.Type ?? 'any'})`);
 
