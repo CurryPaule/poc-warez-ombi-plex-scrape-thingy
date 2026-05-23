@@ -12,7 +12,7 @@ export interface WatchlistRow {
   DeactivateOnMatch: boolean | number;
   Quality?: '720p' | '1080p' | '2160p' | '';
   LangRequired?: string;          // comma-separated, e.g. "GER,ENG"
-  Tags?: string;                  // comma-separated, e.g. "HDR,H265,iSSEYMiYAKE" — all must match in fulltitle
+  Tags?: string | string[];          // comma-separated or array, e.g. "HDR,H265,iSSEYMiYAKE" — all must match in fulltitle
   Season?: number;                // null = any season
   LastEpisodeFound?: number;      // highest episode number matched so far
   LastMatchedAt?: string;

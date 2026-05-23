@@ -67,9 +67,12 @@ export function meetsLanguage(releaseLangs: string[], langRequired: string | und
 }
 
 /** Check if a release fulltitle contains all required tags (case-insensitive, AND logic) */
-export function matchesTags(fulltitle: string, tags: string | undefined | null): boolean {
+export function matchesTags(fulltitle: string, tags: string | string[] | undefined | null): boolean {
   if (!tags) return true;
-  const required = tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+  // NocoDB may return tags as a comma-separated string or as an array
+  const required = (Array.isArray(tags) ? tags : tags.split(','))
+    .map(t => t.trim().toLowerCase())
+    .filter(Boolean);
   if (required.length === 0) return true;
   const ft = fulltitle.toLowerCase();
   return required.every(tag => ft.includes(tag));
