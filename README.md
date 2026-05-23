@@ -30,37 +30,43 @@ Create three tables in NocoDB manually:
 ### `watchlist`
 | Field | Type | Notes |
 |---|---|---|
-| `title` | Text | Title to search for |
-| `type` | Single Select | `movie` or `series` |
-| `imdb_id` | Text | Optional — enables precise matching |
-| `tmdb_id` | Number | Optional |
-| `quality` | Single Select | `720p`, `1080p`, `2160p` (leave blank for any) |
-| `lang_required` | Text | Comma-separated e.g. `GER,ENG` |
-| `season` | Number | Series season number (blank = any) |
-| `is_active` | Checkbox | Uncheck to pause monitoring |
-| `last_matched_at` | DateTime | Auto-updated by scraper |
-| `notes` | Long Text | Free notes |
+| `Title` | Text | Title to search for |
+| `Type` | Single Select | `movie` or `series` |
+| `ImdbId` | Text | Optional — enables precise matching |
+| `TmdbId` | Number | Optional |
+| `Quality` | Single Select | `720p`, `1080p`, `2160p` (leave blank for any) |
+| `LangRequired` | Text | Comma-separated e.g. `GER,ENG` |
+| `Tags` | Multi Select | AND filter against fulltitle (e.g. `HDR`, `WEB`, `H265`, uploader name) |
+| `Season` | Number | Series season number (blank = any) |
+| `LastEpisodeFound` | Number | Auto-updated — highest episode count matched so far |
+| `Active` | Checkbox | Uncheck to pause monitoring |
+| `DeactivateOnMatch` | Checkbox | Auto-deactivate movie items after first match |
+| `LastMatchedAt` | DateTime | Auto-updated by scraper |
+| `Notes` | Long Text | Free notes |
 
 ### `matches`
 | Field | Type |
 |---|---|
-| `watchlist_id` | Number |
-| `warez_id` | Number |
-| `warez_uid` | Text |
-| `title` | Text |
-| `fulltitle` | Text |
-| `type` | Text |
-| `quality` | Text |
-| `lang` | Long Text (JSON) |
-| `links` | Long Text (JSON) |
-| `crypted_links` | Long Text (JSON) |
-| `size_bytes` | Number |
-| `release_group` | Text |
-| `imdb_id` | Text |
-| `tmdb_id` | Number |
-| `warez_created_at` | DateTime |
-| `matched_at` | DateTime |
-| `status` | Single Select: `found`, `matched`, `processed` |
+| `WatchlistId` | Number |
+| `WarezId` | Number |
+| `WarezUid` | Text |
+| `Title` | Text |
+| `Fulltitle` | Text |
+| `Type` | Text |
+| `Season` | Number |
+| `Episode` | Number |
+| `SeasonEpisodeKey` | Text (e.g. `S02E05`) |
+| `Quality` | Text |
+| `Lang` | Long Text (JSON) |
+| `Links` | Long Text (JSON) |
+| `CryptedLinks` | Long Text (JSON) |
+| `SizeBytes` | Number |
+| `ReleaseGroup` | Text |
+| `ImdbId` | Text |
+| `TmdbId` | Number |
+| `WarezCreatedAt` | DateTime |
+| `MatchedAt` | DateTime |
+| `Status` | Single Select: `found`, `matched`, `processed` |
 
 ### `scraper_state`
 | Field | Type |
@@ -145,9 +151,17 @@ If NocoDB runs in Docker too, uncomment the `networks` section in `docker/docker
 
 1. **IMDB/TMDB ID** — if both the watchlist item and the warez release carry an ID, it's compared exactly. This is the most reliable match.
 2. **Normalized title** — lowercased, dots/dashes stripped, then compared. The release's `title` field (provided by warez, clean) and an extracted version of `fulltitle` are both checked.
-3. **Quality filter** — tiers: `720p`, `1080p`, `2160p`. Set `quality` to match only that exact quality tier.
-4. **Language filter** — `lang_required = GER,ENG` means the release must include both German and English audio.
-5. **Season filter** — for series, set `season = 2` to only match season 2 releases.
+3. **Quality filter** — tiers: `720p`, `1080p`, `2160p`. Set `Quality` to match only that exact quality tier.
+4. **Language filter** — `LangRequired = GER,ENG` means the release must include both German and English audio.
+5. **Tags filter** — all tags must appear in the release fulltitle (AND logic, case-insensitive). Use for format filters (`HDR`, `WEB`, `H265`) or to pin a specific uploader for consistent quality.
+6. **Season filter** — for series, set `Season = 2` to only match season 2 releases.
+
+### Episode Tracking
+
+For series, the enrichment scraper tracks episodes via `episode_count_in_season` from the detail API:
+- **Initial enrichment** (`found` → `matched`): compares against `LastEpisodeFound` in the watchlist
+- **Re-checks** (`matched` series): compares against the match record's `Episode` field — if the detail API now reports more episodes, the match is updated
+- `LastEpisodeFound` in the watchlist is always updated to the highest episode count seen
 
 ## Project Structure
 

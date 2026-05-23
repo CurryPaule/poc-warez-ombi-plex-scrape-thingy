@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a TypeScript + Playwright scraping solution that monitors **warez.cx** for movies and TV shows, matching uploads against a **NocoDB** watchlist and logging findings. It's designed to run in Docker with cron scheduling.
+This is a TypeScript scraping solution that monitors **warez.cx** for movies and TV shows, matching uploads against a **NocoDB** watchlist and logging findings. It's designed to run in Docker with cron scheduling.
 
 ## Architecture
 
@@ -75,11 +75,19 @@ Priority order:
 1. Type must match (movie/series)
 2. Quality filter (exact match when set)
 3. Language filter (all required langs must be present)
-4. Season filter (regex `S\d{2}` from fulltitle)
-5. IMDB/TMDB ID exact match (most reliable)
-6. Normalized title match (fallback)
+4. Tags filter (all tags must appear in fulltitle, AND logic, case-insensitive)
+5. Season filter (regex `S\d{2}` from fulltitle)
+6. IMDB/TMDB ID exact match (most reliable)
+7. Normalized title match (fallback)
 
 Episode extraction: `extractSeason()`, `extractEpisode()`, `extractSeasonEpisodeKey()` parse patterns like `S02E05`, `S02` from release fulltitles.
+
+### Episode Tracking
+
+For series, the enrichment scraper tracks episodes via `episode_count_in_season` from the detail API:
+- **Initial enrichment** (`found` → `matched`): compares episode count against `watchlistItem.LastEpisodeFound`
+- **Re-checks** (`matched` series): compares against the **match record's** `Episode` field — detects new episodes even when the watchlist was already updated by a prior run
+- `LastEpisodeFound` in the watchlist is always updated to the highest episode count seen
 
 ## Project Structure
 
@@ -147,7 +155,9 @@ npm run start -- enrich
 - **warez.cx search supports IMDB IDs as queries** — `tt0903747` returns exact match. TMDB IDs (numeric) are unreliable (substring match).
 - **`/start/release` `q` param is non-functional** — it always returns the latest feed regardless of query value. Search must use `/start/search`.
 - **Search returns entry-level results** (1 per media title) with no download links. Download links come from `/start/d/:uid` (detail API) or `/start/release` (feed).
-- **Detail API (`/start/d/:uid`)** returns the full entry with all releases (download links, quality, codec, size, group). No auth required. Used by the enrichment scraper.
+- **Detail API (`/start/d/:uid`)** returns the full entry with all releases (download links, quality, codec, size, group, `episode_count_in_season`). No auth required. Used by the enrichment scraper.
+- **WarezUid vs Release UUID** — search entries have short UIDs like `bZaytSlvMxuK` (entry UID, used for `/start/d/{uid}`). Detail releases have UUIDs like `5f0a05fc-...` (release UID). The enrich scraper must NOT overwrite `WarezUid` with the release UUID, or re-enrichment breaks.
+- **NocoDB Tags field** — multi-select returns an **array**, not a comma-separated string. `matchesTags()` handles both formats.
 - **NocoDB SingleSelect columns** require options to be explicitly configured via the meta API. The `dtxp` parameter during column creation doesn't always apply.
 - **Windows development**: `npx` is a `.ps1` script; for MCP configs use `cmd /c npx` wrapper.
 
