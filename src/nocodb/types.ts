@@ -44,7 +44,7 @@ export interface MatchRow {
   TmdbId?: number;
   WarezCreatedAt?: string;
   MatchedAt: string;
-  Status: 'new' | 'notified' | 'processed';
+  Status: 'found' | 'matched' | 'processed';
   CreatedAt?: string;
   UpdatedAt?: string;
 }

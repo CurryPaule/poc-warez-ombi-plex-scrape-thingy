@@ -1,6 +1,8 @@
 import type { Config } from '../config';
 import type {
   WarezApiResponse,
+  WarezDetailResponse,
+  WarezEntryDetail,
   WarezFetchParams,
   WarezRelease,
   WarezSearchEntry,
@@ -109,6 +111,20 @@ export class WarezClient {
       // Adapt entry-level results to the WarezRelease shape for backward compat
       entries.map(e => this.entryToReleaseFacade(e))
     );
+  }
+
+  /**
+   * Fetch full entry detail including all releases with download links.
+   * Uses the /start/d/:uid endpoint discovered from the SPA.
+   */
+  async fetchEntryDetail(uid: string): Promise<WarezEntryDetail> {
+    const url = `${this.baseUrl}/start/d/${uid}`;
+    const response = await fetch(url, { headers: this.headers });
+    if (!response.ok) {
+      throw new Error(`warez detail API error ${response.status}: ${await response.text()}`);
+    }
+    const data = await response.json() as WarezDetailResponse;
+    return data.item;
   }
 
   /** Map a search entry to a partial WarezRelease for backward-compatible matching */

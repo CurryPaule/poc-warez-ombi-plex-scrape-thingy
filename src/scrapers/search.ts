@@ -123,7 +123,7 @@ export async function runSearchScraper(
         TmdbId: Number(entry.options?.tmdb_id) || 0,
         WarezCreatedAt: '',
         MatchedAt: new Date().toISOString(),
-        Status: 'new',
+        Status: 'found',
       };
 
       const isNew = await nocodb.upsertMatch(matchRecord);

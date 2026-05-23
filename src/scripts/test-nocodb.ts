@@ -39,7 +39,7 @@ async function main() {
   // ── Matches ────────────────────────────────────────────────────────────────
   process.stdout.write('Checking matches table… ');
   // Use matchExistsByContent with a dummy record to confirm table is reachable
-  await client.matchExistsByContent({ WarezId: -1, WarezUid: '', Title: '', Fulltitle: '', Type: '', MatchedAt: '', Status: 'new' });
+  await client.matchExistsByContent({ WarezId: -1, WarezUid: '', Title: '', Fulltitle: '', Type: '', MatchedAt: '', Status: 'found' });
   console.log('✅  reachable');
 
   // ── Scraper state ──────────────────────────────────────────────────────────

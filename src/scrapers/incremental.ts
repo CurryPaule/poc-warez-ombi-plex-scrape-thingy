@@ -119,7 +119,7 @@ export async function runIncrementalScraper(
           TmdbId: release.entry?.options?.tmdb_id ?? 0,
           WarezCreatedAt: release.created_at,
           MatchedAt: new Date().toISOString(),
-          Status: 'new',
+          Status: 'matched',
         };
 
         const isNew = await nocodb.upsertMatch(match);

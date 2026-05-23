@@ -70,7 +70,41 @@ export class NocoDbClient {
     return results;
   }
 
+  async getWatchlistItemById(id: number): Promise<(WatchlistRow & { Id: number }) | null> {
+    const url = `${this.tablePath(this.watchlistTableId)}/records/${id}`;
+    try {
+      const record = await this.request<NocoDbV3Record<WatchlistRow>>('GET', url);
+      return this.flatten(record);
+    } catch {
+      return null;
+    }
+  }
+
   // ─── Matches ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Get all matches with a given status.
+   */
+  async getMatchesByStatus(status: MatchRow['Status']): Promise<(MatchRow & { Id: number })[]> {
+    const results: (MatchRow & { Id: number })[] = [];
+    let url: string | null = `${this.tablePath(this.matchesTableId)}/records?where=(Status,eq,${status})&limit=100`;
+
+    while (url) {
+      const data: NocoDbV3ListResponse<MatchRow> = await this.request('GET', url);
+      results.push(...data.records.map((r: NocoDbV3Record<MatchRow>) => this.flatten(r)));
+      url = data.next ?? null;
+    }
+
+    return results;
+  }
+
+  /**
+   * Update a match record with release-level data from the detail API.
+   */
+  async updateMatchRelease(id: number, fields: Partial<MatchRow>): Promise<void> {
+    const url = `${this.tablePath(this.matchesTableId)}/records`;
+    await this.request('PATCH', url, { id, fields });
+  }
 
   /**
    * Check if a match already exists. Uses content-based dedup:

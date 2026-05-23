@@ -10,8 +10,19 @@ Two scraper modes:
 |---|---|---|
 | `incremental` | Fetches all new releases since the last run, matches against the watchlist | Every 30 min |
 | `search` | Queries the warez search API for each watchlist item to find older releases | Daily at 03:00 |
+| `enrich` | Fetches full release detail for "found" matches, applies quality/tags filters | Daily at 03:30 |
 
-Matches are deduplicated by `warez_id` and written to the NocoDB **matches** table with status `new`. Other processes can read from that table and act on the findings.
+### Match Status Flow
+
+```
+found → matched → processed
+```
+
+- **`found`** — entry identified by search scraper (no release data yet)
+- **`matched`** — release matches all filters, has download links, ready for downstream
+- **`processed`** — handled by downstream consumer (future)
+
+The **incremental** scraper writes matches directly as `matched` (already has release data). The **search** scraper writes as `found`, and the **enrich** scraper promotes them to `matched`.
 
 ## NocoDB Setup
 
@@ -50,7 +61,7 @@ Create three tables in NocoDB manually:
 | `tmdb_id` | Number |
 | `warez_created_at` | DateTime |
 | `matched_at` | DateTime |
-| `status` | Single Select: `new`, `notified`, `processed` |
+| `status` | Single Select: `found`, `matched`, `processed` |
 
 ### `scraper_state`
 | Field | Type |
@@ -99,11 +110,13 @@ cp .env.example .env
 # Run in dev mode (no build step needed)
 npx ts-node src/index.ts incremental   # monitor new releases
 npx ts-node src/index.ts search        # search for watchlist items
+npx ts-node src/index.ts enrich        # enrich found matches with release detail
 
 # Or build first, then run
 npm run build
 npm run start -- incremental
 npm run start -- search
+npm run start -- enrich
 ```
 
 ### Test scripts
@@ -156,6 +169,7 @@ src/
   scrapers/
     incremental.ts      New-uploads scraper
     search.ts           Search-based scraper
+    enrich.ts           Detail enrichment scraper
 docker/
   Dockerfile
   docker-compose.yml
