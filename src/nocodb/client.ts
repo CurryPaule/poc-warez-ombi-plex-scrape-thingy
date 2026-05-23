@@ -99,6 +99,27 @@ export class NocoDbClient {
   }
 
   /**
+   * Get the set of WatchlistIds that already have an active match (found or matched).
+   * Used by the search scraper to skip items that don't need re-searching.
+   */
+  async getWatchlistIdsWithActiveMatches(): Promise<Set<number>> {
+    const ids = new Set<number>();
+    const where = '(Status,eq,found)~or(Status,eq,matched)';
+    let url: string | null = `${this.tablePath(this.matchesTableId)}/records?where=${where}&limit=100`;
+
+    while (url) {
+      const data: NocoDbV3ListResponse<MatchRow> = await this.request('GET', url);
+      for (const record of data.records) {
+        const wid = record.fields.WatchlistId;
+        if (wid) ids.add(wid);
+      }
+      url = data.next ?? null;
+    }
+
+    return ids;
+  }
+
+  /**
    * Update a match record with release-level data from the detail API.
    */
   async updateMatchRelease(id: number, fields: Partial<MatchRow>): Promise<void> {
