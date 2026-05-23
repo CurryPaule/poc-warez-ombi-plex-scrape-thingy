@@ -9,19 +9,17 @@ This is a TypeScript + Playwright scraping solution that monitors **warez.cx** f
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
 │  warez.cx    │────▶│  Scraper (TS)    │────▶│  NocoDB      │
-│  REST API    │     │  - incremental   │     │  - watchlist  │
-│              │     │  - search        │     │  - matches    │
-└──────────────┘     │  - enrich        │     │  - state      │
-                     └──────────────────┘     └──────────────┘
+│  REST API    │     │  - search        │     │  - watchlist  │
+│              │     │  - enrich        │     │  - matches    │
+└──────────────┘     └──────────────────┘     │  - state      │
+                                               └──────────────┘
 ```
 
-### Three Scraping Modes
+### Two Scraping Modes
 
-1. **Incremental** (`/start/release`): Monitors the live feed every 30 min. Returns individual **releases** with download links, quality, season/episode info. The `q` param does NOT work on this endpoint. Writes matches directly as `matched`.
+1. **Search** (`/start/search`): Proactively searches for watchlist items. Returns **entry-level** results (media titles) — no download links, no episode info. IMDB IDs (e.g. `tt0903747`) work as search queries; TMDB IDs (numeric) do not. Writes matches as `found`.
 
-2. **Search** (`/start/search`): Proactively searches for watchlist items daily. Returns **entry-level** results (media titles) — no download links, no episode info. IMDB IDs (e.g. `tt0903747`) work as search queries; TMDB IDs (numeric) do not. Writes matches as `found`.
-
-3. **Enrich** (`/start/d/:uid`): Fetches full detail (all releases) for `found` matches. Applies Quality/Tags/Language filters against individual releases and promotes matching records to `matched` with full release data.
+2. **Enrich** (`/start/d/:uid`): Fetches full detail (all releases) for `found` matches. Applies Quality/Tags/Language filters against individual releases and promotes matching records to `matched` with full release data. Also re-checks `matched` series for new episodes.
 
 ### NocoDB Integration
 
@@ -45,7 +43,7 @@ This is a TypeScript + Playwright scraping solution that monitors **warez.cx** f
 - ImdbId, TmdbId, WarezCreatedAt, MatchedAt, Status (found/matched/processed)
 
 **State** (`mx7g7gdnsjh6keo`):
-- Key, Value (used for `last_incremental_run_at` checkpoint)
+- Key, Value (general-purpose key-value store)
 
 ### Match Status State Machine
 
@@ -88,18 +86,17 @@ Episode extraction: `extractSeason()`, `extractEpisode()`, `extractSeasonEpisode
 ```
 src/
 ├── config.ts              # Zod-validated env config with .env parsing
-├── index.ts               # CLI entry: `node dist/index.js <incremental|search|enrich>`
+├── index.ts               # CLI entry: `node dist/index.js <search|enrich>`
 ├── matcher.ts             # Title normalization, ID matching, quality/lang/season/episode/tags filters
 ├── warez/
-│   ├── api.ts             # WarezClient: fetchReleases(), streamReleases(), searchEntries(), fetchEntryDetail()
+│   ├── api.ts             # WarezClient: searchEntries(), fetchEntryDetail(), fetchReleases() (test scripts)
 │   └── types.ts           # WarezRelease, WarezSearchEntry, WarezEntryDetail, response types
 ├── nocodb/
 │   ├── client.ts          # NocoDbClient: watchlist CRUD, match upsert/update with dedup, state KV
 │   └── types.ts           # WatchlistRow, MatchRow, ScraperStateRow, v3 response types
 ├── scrapers/
-│   ├── incremental.ts     # Feed monitor with checkpoint pagination
 │   ├── search.ts          # Search-based scraper with entry-level matching
-│   └── enrich.ts          # Detail enrichment scraper (found → matched)
+│   └── enrich.ts          # Detail enrichment + episode tracking scraper (found → matched)
 └── scripts/
     ├── test-warez.ts      # API connectivity test (--search "query")
     ├── test-nocodb.ts     # NocoDB connection validator
@@ -123,13 +120,11 @@ npm run test:match                          # Dry-run matcher
 
 # Run scrapers
 npx ts-node src/index.ts search             # Search for all watchlist items
-npx ts-node src/index.ts incremental        # Check new uploads since last run
-npx ts-node src/index.ts enrich             # Enrich found matches with release detail
+npx ts-node src/index.ts enrich             # Enrich found matches & check for new episodes
 
 # Build for production
 npm run build
 npm run start -- search
-npm run start -- incremental
 npm run start -- enrich
 ```
 
@@ -144,7 +139,6 @@ npm run start -- enrich
 | `NOCODB_MATCHES_TABLE_ID` | ✅ | Matches table ID |
 | `NOCODB_STATE_TABLE_ID` | ✅ | State table ID |
 | `WAREZ_API_BASE` | ❌ | Default: `https://api.warez.cx` |
-| `MAX_INCREMENTAL_PAGES` | ❌ | Default: 20 |
 | `SEARCH_DELAY_MS` | ❌ | Default: 1500 |
 | `DEFAULT_QUALITY` | ❌ | Default: (empty = any) |
 
@@ -165,9 +159,8 @@ docker compose up -d
 ```
 
 Cron schedule (configured in `docker/crontab`):
-- Every 30 min: incremental scraper
-- Daily at 03:00: search scraper
-- Daily at 03:30: enrichment scraper (after search completes)
+- Every 4 hours: search scraper
+- Every 4 hours (15 min offset): enrichment scraper
 
 ## Future Work
 

@@ -8,9 +8,8 @@ Two scraper modes:
 
 | Mode | What it does | Schedule |
 |---|---|---|
-| `incremental` | Fetches all new releases since the last run, matches against the watchlist | Every 30 min |
-| `search` | Queries the warez search API for each watchlist item to find older releases | Daily at 03:00 |
-| `enrich` | Fetches full release detail for "found" matches, applies quality/tags filters | Daily at 03:30 |
+| `search` | Queries the warez search API for each watchlist item to find media entries | Every 4 hours |
+| `enrich` | Fetches full release detail, applies quality/tags filters, tracks new episodes | Every 4 hours (after search) |
 
 ### Match Status Flow
 
@@ -22,7 +21,7 @@ found → matched → processed
 - **`matched`** — release matches all filters, has download links, ready for downstream
 - **`processed`** — handled by downstream consumer (future)
 
-The **incremental** scraper writes matches directly as `matched` (already has release data). The **search** scraper writes as `found`, and the **enrich** scraper promotes them to `matched`.
+The **search** scraper writes matches as `found`. The **enrich** scraper promotes them to `matched` after finding a release that passes all filters. It also re-checks `matched` series for new episodes.
 
 ## NocoDB Setup
 
@@ -86,8 +85,7 @@ Key variables:
 | `NOCODB_WATCHLIST_TABLE_ID` | Table ID from NocoDB URL when viewing the table |
 | `NOCODB_MATCHES_TABLE_ID` | Same for matches table |
 | `NOCODB_STATE_TABLE_ID` | Same for state table |
-| `MAX_INCREMENTAL_PAGES` | Max pages per incremental run (default 20, 0 = unlimited) |
-| `SEARCH_DELAY_MS` | Delay between search queries in ms (default 1500) |
+| `SEARCH_DELAY_MS` | Delay between API queries in ms (default 1500) |
 
 ### Finding your NocoDB Table IDs
 
@@ -108,13 +106,11 @@ cp .env.example .env
 # edit .env with your NocoDB credentials
 
 # Run in dev mode (no build step needed)
-npx ts-node src/index.ts incremental   # monitor new releases
 npx ts-node src/index.ts search        # search for watchlist items
-npx ts-node src/index.ts enrich        # enrich found matches with release detail
+npx ts-node src/index.ts enrich        # enrich found matches & check for new episodes
 
 # Or build first, then run
 npm run build
-npm run start -- incremental
 npm run start -- search
 npm run start -- enrich
 ```
@@ -138,7 +134,7 @@ docker compose up -d
 Logs are written to the `scraper-logs` volume. To tail them:
 
 ```bash
-docker exec warez-plex-scraper tail -f /var/log/cron-incremental.log
+docker exec warez-plex-scraper tail -f /var/log/cron-search.log
 ```
 
 ### Connecting to NocoDB in the same Docker network
@@ -167,9 +163,8 @@ src/
     api.ts              warez.cx API client
     types.ts            API response types
   scrapers/
-    incremental.ts      New-uploads scraper
     search.ts           Search-based scraper
-    enrich.ts           Detail enrichment scraper
+    enrich.ts           Detail enrichment + episode tracking scraper
 docker/
   Dockerfile
   docker-compose.yml

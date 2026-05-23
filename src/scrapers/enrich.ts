@@ -18,7 +18,7 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Check if a detail release matches a watchlist item's filters.
- * Applies Quality, Tags, and Language checks.
+ * Applies Quality, Tags, Language, and Season checks.
  */
 function releaseMatchesFilters(
   release: WarezDetailRelease,
@@ -28,7 +28,6 @@ function releaseMatchesFilters(
   if (!meetsLanguage(release.lang, watchlistItem.LangRequired)) return false;
   if (!matchesTags(release.fulltitle, watchlistItem.Tags)) return false;
 
-  // Season filter
   if (watchlistItem.Type === 'series' && watchlistItem.Season != null) {
     const releaseSeason = extractSeason(release.fulltitle);
     if (releaseSeason !== null && releaseSeason !== watchlistItem.Season) return false;
@@ -38,9 +37,110 @@ function releaseMatchesFilters(
 }
 
 /**
- * Enrichment scraper: fetches detail data for "found" matches from the search
- * scraper, applies Quality/Tags/Language filters against individual releases,
- * and promotes matching records to "matched" status with full release data.
+ * Get the episode count from a detail release's options.
+ */
+function getEpisodeCount(release: WarezDetailRelease): number | null {
+  const epCount = release.options?.episode_count_in_season;
+  if (!epCount) return null;
+  const count = parseInt(String(epCount), 10);
+  return count > 0 ? count : null;
+}
+
+/**
+ * Process a single match against available releases.
+ * Returns true if the match was enriched/updated, false if skipped.
+ */
+async function processMatch(
+  match: MatchRow & { Id: number },
+  releases: WarezDetailRelease[],
+  watchlistItem: WatchlistRow & { Id: number },
+  nocodb: NocoDbClient,
+  isRecheck: boolean,
+): Promise<'enriched' | 'updated' | 'skipped'> {
+  const matchingRelease = releases.find(r => releaseMatchesFilters(r, watchlistItem));
+
+  if (!matchingRelease) {
+    if (!isRecheck) {
+      const filters = [
+        watchlistItem.Quality ? `Q:${watchlistItem.Quality}` : null,
+        watchlistItem.Tags ? `Tags:${watchlistItem.Tags}` : null,
+        watchlistItem.LangRequired ? `Lang:${watchlistItem.LangRequired}` : null,
+      ].filter(Boolean).join(', ');
+      console.log(`  ⏳ No matching release for "${match.Title}" (filters: ${filters || 'none'})`);
+    }
+    return 'skipped';
+  }
+
+  const season = extractSeason(matchingRelease.fulltitle);
+  let episode = extractEpisode(matchingRelease.fulltitle);
+  let seasonEpisodeKey = extractSeasonEpisodeKey(matchingRelease.fulltitle);
+
+  // For season packs, use episode_count_in_season
+  if (watchlistItem.Type === 'series' && episode == null) {
+    const count = getEpisodeCount(matchingRelease);
+    if (count != null) {
+      const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+      if (count <= lastEp) {
+        if (!isRecheck) {
+          console.log(`  ⏩ No new episodes: "${matchingRelease.fulltitle}" — ${count} ep(s), last found: ${lastEp}`);
+        }
+        return 'skipped';
+      }
+      episode = count;
+      seasonEpisodeKey = seasonEpisodeKey
+        ? `${seasonEpisodeKey}E${String(count).padStart(2, '0')}`
+        : `E${String(count).padStart(2, '0')}`;
+    }
+  }
+
+  // For individual episodes, skip if not higher than LastEpisodeFound
+  if (watchlistItem.Type === 'series' && episode != null) {
+    const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+    if (episode <= lastEp) {
+      if (!isRecheck) {
+        console.log(`  ⏩ Old episode: "${matchingRelease.fulltitle}" — E${String(episode).padStart(2, '0')}, last found: E${String(lastEp).padStart(2, '0')}`);
+      }
+      return 'skipped';
+    }
+  }
+
+  await nocodb.updateMatchRelease(match.Id, {
+    WarezId: matchingRelease.id,
+    Fulltitle: matchingRelease.fulltitle,
+    Quality: matchingRelease.quality ?? '',
+    Lang: JSON.stringify(matchingRelease.lang),
+    Links: JSON.stringify(matchingRelease.links),
+    CryptedLinks: JSON.stringify(matchingRelease.crypted_links),
+    SizeBytes: matchingRelease.size,
+    ReleaseGroup: matchingRelease.group,
+    Season: season ?? undefined,
+    Episode: episode ?? undefined,
+    SeasonEpisodeKey: seasonEpisodeKey ?? undefined,
+    WarezCreatedAt: matchingRelease.created_at,
+    Status: 'matched',
+  });
+
+  await nocodb.updateWatchlistLastMatched(watchlistItem.Id, new Date().toISOString());
+
+  if (episode != null && watchlistItem.Type === 'series') {
+    const current = watchlistItem.LastEpisodeFound ?? 0;
+    if (episode > current) {
+      await nocodb.updateWatchlistEpisode(watchlistItem.Id, episode);
+    }
+  }
+
+  if (watchlistItem.Type === 'movie' && watchlistItem.DeactivateOnMatch) {
+    await nocodb.deactivateWatchlistItem(watchlistItem.Id);
+    console.log(`  🔕 Deactivated: "${watchlistItem.Title}" (DeactivateOnMatch)`);
+  }
+
+  return isRecheck ? 'updated' : 'enriched';
+}
+
+/**
+ * Enrichment scraper:
+ * 1. Processes "found" matches — applies Quality/Tags/Language filters, promotes to "matched"
+ * 2. Re-checks "matched" series — detects new episodes via episode_count_in_season
  */
 export async function runEnrichScraper(
   warez: WarezClient,
@@ -49,36 +149,50 @@ export async function runEnrichScraper(
 ): Promise<void> {
   console.log('▶ Enrichment scraper starting...');
 
+  // Phase 1: Enrich "found" matches
   const foundMatches = await nocodb.getMatchesByStatus('found');
-  console.log(`  Found matches to enrich: ${foundMatches.length}`);
 
-  if (foundMatches.length === 0) {
-    console.log('  No matches to enrich — nothing to do.');
+  // Phase 2: Re-check "matched" series for new episodes
+  const matchedAll = await nocodb.getMatchesByStatus('matched');
+  const matchedSeries = matchedAll.filter(m => m.Type === 'series');
+
+  const allMatches = [
+    ...foundMatches.map(m => ({ match: m, isRecheck: false })),
+    ...matchedSeries.map(m => ({ match: m, isRecheck: true })),
+  ];
+
+  console.log(`  Found: ${foundMatches.length} to enrich, ${matchedSeries.length} series to re-check`);
+
+  if (allMatches.length === 0) {
+    console.log('  Nothing to do.');
     return;
   }
 
-  // Group matches by WarezUid to avoid duplicate API calls for the same entry
-  const byUid = new Map<string, (MatchRow & { Id: number })[]>();
-  for (const match of foundMatches) {
-    const uid = match.WarezUid;
+  // Group by WarezUid to avoid duplicate API calls
+  const byUid = new Map<string, { match: MatchRow & { Id: number }; isRecheck: boolean }[]>();
+  for (const entry of allMatches) {
+    const uid = entry.match.WarezUid;
     if (!byUid.has(uid)) byUid.set(uid, []);
-    byUid.get(uid)!.push(match);
+    byUid.get(uid)!.push(entry);
   }
 
-  // Pre-load watchlist items for all matches
+  // Pre-load watchlist items
   const watchlistCache = new Map<number, WatchlistRow & { Id: number }>();
-  for (const match of foundMatches) {
-    if (match.WatchlistId && !watchlistCache.has(match.WatchlistId)) {
-      const item = await nocodb.getWatchlistItemById(match.WatchlistId);
-      if (item) watchlistCache.set(match.WatchlistId, item);
+  for (const entry of allMatches) {
+    const wid = entry.match.WatchlistId;
+    if (wid && !watchlistCache.has(wid)) {
+      const item = await nocodb.getWatchlistItemById(wid);
+      if (item) watchlistCache.set(wid, item);
     }
   }
 
   let enriched = 0;
+  let updated = 0;
   let skipped = 0;
 
-  for (const [uid, matches] of byUid) {
-    console.log(`  📦 Fetching detail for: ${matches[0]!.Title} (${uid})`);
+  for (const [uid, entries] of byUid) {
+    const label = entries[0]!.isRecheck ? '🔄' : '📦';
+    console.log(`  ${label} Fetching detail for: ${entries[0]!.match.Title} (${uid})`);
 
     let releases: WarezDetailRelease[];
     try {
@@ -91,107 +205,32 @@ export async function runEnrichScraper(
       continue;
     }
 
-    for (const match of matches) {
+    for (const { match, isRecheck } of entries) {
       if (!match.WatchlistId) {
-        console.log(`  ⏩ Skipped match ${match.Id}: no WatchlistId`);
         skipped++;
         continue;
       }
 
       const watchlistItem = watchlistCache.get(match.WatchlistId);
       if (!watchlistItem) {
-        console.log(`  ⏩ Skipped match ${match.Id}: watchlist item ${match.WatchlistId} not found`);
         skipped++;
         continue;
       }
 
-      // Find the first release that matches all filters
-      const matchingRelease = releases.find(r => releaseMatchesFilters(r, watchlistItem));
-
-      if (!matchingRelease) {
-        const filters = [
-          watchlistItem.Quality ? `Q:${watchlistItem.Quality}` : null,
-          watchlistItem.Tags ? `Tags:${watchlistItem.Tags}` : null,
-          watchlistItem.LangRequired ? `Lang:${watchlistItem.LangRequired}` : null,
-        ].filter(Boolean).join(', ');
-        console.log(`  ⏳ No matching release for "${match.Title}" (filters: ${filters || 'none'})`);
+      const result = await processMatch(match, releases, watchlistItem, nocodb, isRecheck);
+      if (result === 'enriched') {
+        enriched++;
+        console.log(`  ✅ Enriched: [${watchlistItem.Title}] ← "${match.Title}" (${releases.find(r => releaseMatchesFilters(r, watchlistItem))?.quality})`);
+      } else if (result === 'updated') {
+        updated++;
+        console.log(`  🆕 New episodes: [${watchlistItem.Title}] — updated with latest release data`);
+      } else {
         skipped++;
-        continue;
       }
-
-      const season = extractSeason(matchingRelease.fulltitle);
-      let episode = extractEpisode(matchingRelease.fulltitle);
-      let seasonEpisodeKey = extractSeasonEpisodeKey(matchingRelease.fulltitle);
-
-      // For season packs, use episode_count_in_season from the detail release
-      if (watchlistItem.Type === 'series' && episode == null) {
-        const epCount = matchingRelease.options?.episode_count_in_season;
-        if (epCount) {
-          const count = parseInt(String(epCount), 10);
-          if (count > 0) {
-            const lastEp = watchlistItem.LastEpisodeFound ?? 0;
-            if (count <= lastEp) {
-              console.log(`  ⏩ Skipped (no new episodes): "${matchingRelease.fulltitle}" — ${count} ep(s), last found: ${lastEp}`);
-              skipped++;
-              continue;
-            }
-            episode = count;
-            seasonEpisodeKey = seasonEpisodeKey
-              ? `${seasonEpisodeKey}E${String(count).padStart(2, '0')}`
-              : `E${String(count).padStart(2, '0')}`;
-          }
-        }
-      }
-
-      // For individual episodes, skip if not higher than LastEpisodeFound
-      if (watchlistItem.Type === 'series' && episode != null) {
-        const lastEp = watchlistItem.LastEpisodeFound ?? 0;
-        if (episode <= lastEp) {
-          console.log(`  ⏩ Skipped (old episode): "${matchingRelease.fulltitle}" — E${String(episode).padStart(2, '0')}, last found: E${String(lastEp).padStart(2, '0')}`);
-          skipped++;
-          continue;
-        }
-      }
-
-      await nocodb.updateMatchRelease(match.Id, {
-        WarezId: matchingRelease.id,
-        // Keep WarezUid as the entry UID (not the release UUID) for future detail API calls
-        Fulltitle: matchingRelease.fulltitle,
-        Quality: matchingRelease.quality ?? '',
-        Lang: JSON.stringify(matchingRelease.lang),
-        Links: JSON.stringify(matchingRelease.links),
-        CryptedLinks: JSON.stringify(matchingRelease.crypted_links),
-        SizeBytes: matchingRelease.size,
-        ReleaseGroup: matchingRelease.group,
-        Season: season ?? undefined,
-        Episode: episode ?? undefined,
-        SeasonEpisodeKey: seasonEpisodeKey ?? undefined,
-        WarezCreatedAt: matchingRelease.created_at,
-        Status: 'matched',
-      });
-
-      await nocodb.updateWatchlistLastMatched(watchlistItem.Id, new Date().toISOString());
-
-      // Track highest episode found for series
-      if (episode != null && watchlistItem.Type === 'series') {
-        const current = watchlistItem.LastEpisodeFound ?? 0;
-        if (episode > current) {
-          await nocodb.updateWatchlistEpisode(watchlistItem.Id, episode);
-        }
-      }
-
-      // Auto-deactivate movie watchlist items on match
-      if (watchlistItem.Type === 'movie' && watchlistItem.DeactivateOnMatch) {
-        await nocodb.deactivateWatchlistItem(watchlistItem.Id);
-        console.log(`  🔕 Deactivated: "${watchlistItem.Title}" (DeactivateOnMatch)`);
-      }
-
-      enriched++;
-      console.log(`  ✅ Enriched: [${watchlistItem.Title}] ← "${matchingRelease.fulltitle}" (${matchingRelease.quality})`);
     }
 
     await sleep(config.SEARCH_DELAY_MS);
   }
 
-  console.log(`✔ Enrichment done. Enriched: ${enriched}, Skipped: ${skipped}`);
+  console.log(`✔ Enrichment done. Enriched: ${enriched}, Updated: ${updated}, Skipped: ${skipped}`);
 }

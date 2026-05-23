@@ -7,8 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "scrape:incremental": "ts-node src/index.ts incremental",
     "scrape:search": "ts-node src/index.ts search",
+    "scrape:enrich": "ts-node src/index.ts enrich",
     "test:warez": "ts-node src/scripts/test-warez.ts",
     "test:nocodb": "ts-node src/scripts/test-nocodb.ts",
     "test:match": "ts-node src/scripts/test-match.ts"

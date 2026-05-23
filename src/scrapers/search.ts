@@ -32,7 +32,7 @@ function sleep(ms: number): Promise<void> {
  *
  * Note: search entries are entry-level (no quality, no release-specific fulltitle),
  * so Quality and Tags filters are NOT applied here — those are enforced by the
- * incremental scraper which has release-level detail.
+ * enrichment scraper which has release-level detail.
  */
 function entryMatchesWatchlistItem(entry: WarezSearchEntry, item: WatchlistRow): boolean {
   // Type must match
@@ -69,7 +69,7 @@ function entryMatchesWatchlistItem(entry: WarezSearchEntry, item: WatchlistRow):
  * search API (/start/search) and write any matches to the matches table.
  *
  * Note: Search results are entry-level (no download links).
- * Download links come from the incremental scraper or future Playwright detail scraping.
+ * Download links are resolved by the enrichment scraper via the detail API.
  */
 export async function runSearchScraper(
   warez: WarezClient,
