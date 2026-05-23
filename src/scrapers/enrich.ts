@@ -79,7 +79,11 @@ async function processMatch(
   if (watchlistItem.Type === 'series' && episode == null) {
     const count = getEpisodeCount(matchingRelease);
     if (count != null) {
-      const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+      // For re-checks, compare against the match's stored episode (detect new eps since last enrichment).
+      // For initial enrichment, compare against the watchlist's LastEpisodeFound.
+      const lastEp = isRecheck
+        ? (match.Episode ?? 0)
+        : (watchlistItem.LastEpisodeFound ?? 0);
       if (count <= lastEp) {
         if (!isRecheck) {
           console.log(`  ⏩ No new episodes: "${matchingRelease.fulltitle}" — ${count} ep(s), last found: ${lastEp}`);
@@ -95,7 +99,9 @@ async function processMatch(
 
   // For individual episodes, skip if not higher than LastEpisodeFound
   if (watchlistItem.Type === 'series' && episode != null) {
-    const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+    const lastEp = isRecheck
+      ? (match.Episode ?? 0)
+      : (watchlistItem.LastEpisodeFound ?? 0);
     if (episode <= lastEp) {
       if (!isRecheck) {
         console.log(`  ⏩ Old episode: "${matchingRelease.fulltitle}" — E${String(episode).padStart(2, '0')}, last found: E${String(lastEp).padStart(2, '0')}`);
