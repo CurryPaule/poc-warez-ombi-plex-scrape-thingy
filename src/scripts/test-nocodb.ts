@@ -25,12 +25,13 @@ async function main() {
   if (watchlist.length > 0) {
     console.log('\n  Active watchlist items:');
     for (const item of watchlist) {
-      const qual = item.MinQuality ? ` | min: ${item.MinQuality}` : '';
+      const qual = item.Quality ? ` | quality: ${item.Quality}` : '';
       const lang = item.LangRequired ? ` | lang: ${item.LangRequired}` : '';
+      const tags = item.Tags ? ` | tags: ${item.Tags}` : '';
       const season = item.Season != null ? ` S${String(item.Season).padStart(2, '0')}` : '';
       const lastEp = item.LastEpisodeFound != null ? ` (last ep: E${String(item.LastEpisodeFound).padStart(2, '0')})` : '';
       const id = item.ImdbId ? ` (IMDB: ${item.ImdbId})` : item.TmdbId ? ` (TMDB: ${item.TmdbId})` : '';
-      console.log(`    [${item.Id}] [${item.Type ?? '-'}] ${item.Title}${season}${lastEp}${id}${qual}${lang}`);
+      console.log(`    [${item.Id}] [${item.Type ?? '-'}] ${item.Title}${season}${lastEp}${id}${qual}${lang}${tags}`);
     }
     console.log();
   }
@@ -38,7 +39,7 @@ async function main() {
   // ── Matches ────────────────────────────────────────────────────────────────
   process.stdout.write('Checking matches table… ');
   // Use matchExistsByContent with a dummy record to confirm table is reachable
-  await client.matchExistsByContent({ WarezId: -1, WarezUid: '', Title: '', Fulltitle: '', Type: '', MatchedAt: '', Status: 'new' });
+  await client.matchExistsByContent({ WarezId: -1, WarezUid: '', Title: '', Fulltitle: '', Type: '', MatchedAt: '', Status: 'found' });
   console.log('✅  reachable');
 
   // ── Scraper state ──────────────────────────────────────────────────────────

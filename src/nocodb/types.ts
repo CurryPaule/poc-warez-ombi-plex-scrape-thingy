@@ -10,8 +10,9 @@ export interface WatchlistRow {
   TmdbId?: number;
   Active: boolean | number;       // NocoDB checkbox = 0/1
   DeactivateOnMatch: boolean | number;
-  MinQuality?: '720p' | '1080p' | '2160p' | '';
+  Quality?: '720p' | '1080p' | '2160p' | '';
   LangRequired?: string;          // comma-separated, e.g. "GER,ENG"
+  Tags?: string | string[];          // comma-separated or array, e.g. "HDR,H265,iSSEYMiYAKE" — all must match in fulltitle
   Season?: number;                // null = any season
   LastEpisodeFound?: number;      // highest episode number matched so far
   LastMatchedAt?: string;
@@ -43,7 +44,7 @@ export interface MatchRow {
   TmdbId?: number;
   WarezCreatedAt?: string;
   MatchedAt: string;
-  Status: 'new' | 'notified' | 'processed';
+  Status: 'found' | 'matched' | 'processed';
   CreatedAt?: string;
   UpdatedAt?: string;
 }

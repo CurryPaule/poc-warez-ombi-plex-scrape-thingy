@@ -132,3 +132,67 @@ export interface WarezSearchResponse {
   };
   params: unknown;
 }
+
+// ─── Detail API (/start/d/:uid) — full entry with all releases ───────────────
+
+/** Individual release within a detail response (has download links, quality, etc.) */
+export interface WarezDetailRelease {
+  id: number;
+  uid: string;
+  user_id: number;
+  entry_id: number;
+  title: string;
+  fulltitle: string;
+  type: string;
+  sub_type: string;
+  links: Record<string, string[]>;
+  crypted_links: Record<string, string>;
+  size: number;
+  parts: number;
+  group: string;
+  quality: string | null;
+  video_stream: string | null;
+  video_codec: string | null;
+  audio_stream: string | null;
+  bitrate: string | null;
+  lang: string[];
+  downloads: number;
+  source: string;
+  options: {
+    check?: Record<string, string>;
+    season?: string | null;
+    episode?: string | null;
+    episode_count_in_season?: string | null;
+    [key: string]: unknown;
+  };
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  episode_updated_at: string | null;
+  has_new_episode: boolean;
+  display_priority: number;
+}
+
+/** Full entry detail from /start/d/:uid */
+export interface WarezEntryDetail {
+  id: number;
+  uid: string;
+  type: string;
+  sub_type: string;
+  title: string;
+  original_title: string;
+  fulltitle: string;
+  lang: string[];
+  genre: string[];
+  options: WarezEntryOptions;
+  releases: WarezDetailRelease[];
+}
+
+/** Response from /start/d/:uid */
+export interface WarezDetailResponse {
+  __e: unknown;
+  __s: unknown;
+  cdn: boolean;
+  se: boolean;
+  item: WarezEntryDetail;
+}

@@ -3,6 +3,10 @@ import type { MatchRow, WatchlistRow } from '../nocodb/types';
 import type { WarezClient } from '../warez/api';
 import type { WarezSearchEntry } from '../warez/types';
 import type { Config } from '../config';
+import {
+  normalizeTitle,
+  meetsLanguage,
+} from '../matcher';
 
 /**
  * Build the search query for a watchlist item.
@@ -22,25 +26,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/** Normalize a title for comparison */
-function normalizeTitle(raw: string): string {
-  return raw.toLowerCase().replace(/[._\-]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 /**
  * Check if a search entry matches a watchlist item.
- * Uses IMDB/TMDB ID when available, falls back to title match.
+ * Reuses shared filter functions from matcher.ts.
+ *
+ * Note: search entries are entry-level (no quality, no release-specific fulltitle),
+ * so Quality and Tags filters are NOT applied here — those are enforced by the
+ * enrichment scraper which has release-level detail.
  */
 function entryMatchesWatchlistItem(entry: WarezSearchEntry, item: WatchlistRow): boolean {
   // Type must match
   if (item.Type && entry.type !== item.Type) return false;
 
-  // Language filter
-  if (item.LangRequired) {
-    const required = item.LangRequired.split(',').map(l => l.trim().toUpperCase()).filter(Boolean);
-    const available = (entry.lang ?? []).map(l => l.toUpperCase());
-    if (!required.every(r => available.includes(r))) return false;
-  }
+  // Language filter — search entries do carry language info
+  if (!meetsLanguage(entry.lang ?? [], item.LangRequired)) return false;
+
+  // Quality and Tags are intentionally NOT checked here:
+  // search entries have no quality field and their fulltitle is just the
+  // media title (e.g. "Dutton Ranch"), not a release name with codec/format info.
 
   // ID-based match (most reliable)
   if (item.ImdbId && entry.options?.imdb_id) {
@@ -66,7 +69,7 @@ function entryMatchesWatchlistItem(entry: WarezSearchEntry, item: WatchlistRow):
  * search API (/start/search) and write any matches to the matches table.
  *
  * Note: Search results are entry-level (no download links).
- * Download links come from the incremental scraper or future Playwright detail scraping.
+ * Download links are resolved by the enrichment scraper via the detail API.
  */
 export async function runSearchScraper(
   warez: WarezClient,
@@ -120,7 +123,7 @@ export async function runSearchScraper(
         TmdbId: Number(entry.options?.tmdb_id) || 0,
         WarezCreatedAt: '',
         MatchedAt: new Date().toISOString(),
-        Status: 'new',
+        Status: 'found',
       };
 
       const isNew = await nocodb.upsertMatch(matchRecord);

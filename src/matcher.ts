@@ -48,14 +48,14 @@ export function extractTitleFromFulltitle(fulltitle: string): string {
   return normalized.slice(0, cutIdx).trim();
 }
 
-/** Check if a release meets the quality minimum requirement */
-export function meetsQuality(releaseQuality: string | null, minQuality: string | undefined | null): boolean {
-  if (!minQuality) return true;
+/** Check if a release matches the required quality exactly */
+export function matchesQuality(releaseQuality: string | null, requiredQuality: string | undefined | null): boolean {
+  if (!requiredQuality) return true;
   if (!releaseQuality) return false;
 
   const relTier = QUALITY_TIERS[releaseQuality.toLowerCase()] ?? 0;
-  const minTier = QUALITY_TIERS[minQuality.toLowerCase()] ?? 0;
-  return relTier >= minTier;
+  const reqTier = QUALITY_TIERS[requiredQuality.toLowerCase()] ?? 0;
+  return relTier === reqTier;
 }
 
 /** Check if a release includes all required languages */
@@ -64,6 +64,18 @@ export function meetsLanguage(releaseLangs: string[], langRequired: string | und
   const required = langRequired.split(',').map(l => l.trim().toUpperCase()).filter(Boolean);
   const available = releaseLangs.map(l => l.toUpperCase());
   return required.every(req => available.includes(req));
+}
+
+/** Check if a release fulltitle contains all required tags (case-insensitive, AND logic) */
+export function matchesTags(fulltitle: string, tags: string | string[] | undefined | null): boolean {
+  if (!tags) return true;
+  // NocoDB may return tags as a comma-separated string or as an array
+  const required = (Array.isArray(tags) ? tags : tags.split(','))
+    .map(t => t.trim().toLowerCase())
+    .filter(Boolean);
+  if (required.length === 0) return true;
+  const ft = fulltitle.toLowerCase();
+  return required.every(tag => ft.includes(tag));
 }
 
 /** Extract season number from fulltitle, e.g. "S02" → 2, null if not found */
@@ -110,13 +122,18 @@ export function matchRelease(release: WarezRelease, watchlistItem: WatchlistRow)
   }
 
   // ── Quality filter ──────────────────────────────────────────────────────────
-  if (!meetsQuality(release.quality, watchlistItem.MinQuality)) {
-    return { matched: false, watchlistItem, reason: `quality ${release.quality} < min ${watchlistItem.MinQuality}` };
+  if (!matchesQuality(release.quality, watchlistItem.Quality)) {
+    return { matched: false, watchlistItem, reason: `quality ${release.quality} ≠ wanted ${watchlistItem.Quality}` };
   }
 
   // ── Language filter ─────────────────────────────────────────────────────────
   if (!meetsLanguage(release.lang, watchlistItem.LangRequired)) {
     return { matched: false, watchlistItem, reason: `missing required langs ${watchlistItem.LangRequired}` };
+  }
+
+  // ── Tags filter (all tags must appear in fulltitle) ─────────────────────────
+  if (!matchesTags(release.fulltitle, watchlistItem.Tags)) {
+    return { matched: false, watchlistItem, reason: `missing required tags ${watchlistItem.Tags}` };
   }
 
   // ── Season filter (series only) ─────────────────────────────────────────────

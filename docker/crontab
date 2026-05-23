@@ -1,5 +1,5 @@
-# Incremental scraper: every 30 minutes
-*/30 * * * * cd /app && node dist/index.js incremental >> /var/log/cron-incremental.log 2>&1
+# Search scraper: every 4 hours
+0 */4 * * * cd /app && node dist/index.js search >> /var/log/cron-search.log 2>&1
 
-# Search scraper: once daily at 03:00
-0 3 * * * cd /app && node dist/index.js search >> /var/log/cron-search.log 2>&1
+# Enrich scraper: every 4 hours (15 min after search)
+15 */4 * * * cd /app && node dist/index.js enrich >> /var/log/cron-enrich.log 2>&1

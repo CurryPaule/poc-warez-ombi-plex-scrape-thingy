@@ -1,6 +1,8 @@
 import type { Config } from '../config';
 import type {
   WarezApiResponse,
+  WarezDetailResponse,
+  WarezEntryDetail,
   WarezFetchParams,
   WarezRelease,
   WarezSearchEntry,
@@ -102,55 +104,17 @@ export class WarezClient {
   }
 
   /**
-   * @deprecated Use searchEntries() instead — the q param on /start/release does not work.
+   * Fetch full entry detail including all releases with download links.
+   * Uses the /start/d/:uid endpoint discovered from the SPA.
    */
-  async search(query: string, types = 'movie,series'): Promise<WarezRelease[]> {
-    return this.searchEntries(query).then(entries =>
-      // Adapt entry-level results to the WarezRelease shape for backward compat
-      entries.map(e => this.entryToReleaseFacade(e))
-    );
+  async fetchEntryDetail(uid: string): Promise<WarezEntryDetail> {
+    const url = `${this.baseUrl}/start/d/${uid}`;
+    const response = await fetch(url, { headers: this.headers });
+    if (!response.ok) {
+      throw new Error(`warez detail API error ${response.status}: ${await response.text()}`);
+    }
+    const data = await response.json() as WarezDetailResponse;
+    return data.item;
   }
 
-  /** Map a search entry to a partial WarezRelease for backward-compatible matching */
-  private entryToReleaseFacade(entry: WarezSearchEntry): WarezRelease {
-    return {
-      id: entry.id,
-      user_id: entry.user_id,
-      entry_id: entry.id,
-      uid: entry.uid,
-      title: entry.title,
-      fulltitle: entry.fulltitle,
-      type: entry.type,
-      sub_type: entry.sub_type,
-      links: {},
-      crypted_links: {},
-      size: 0,
-      parts: 0,
-      group: '',
-      options: [],
-      downloads: entry.downloads,
-      source: '',
-      quality: null,
-      video_stream: null,
-      video_codec: null,
-      audio_stream: null,
-      bitrate: null,
-      lang: entry.lang,
-      created_at: '',
-      updated_at: '',
-      deleted_at: null,
-      episode_updated_at: null,
-      sort_date: '',
-      rn: 0,
-      has_new_episode: false,
-      entry: {
-        id: entry.id,
-        title: entry.title,
-        genre: entry.genre,
-        cover: entry.cover,
-        uid: entry.uid,
-        options: entry.options,
-      },
-    };
-  }
 }
