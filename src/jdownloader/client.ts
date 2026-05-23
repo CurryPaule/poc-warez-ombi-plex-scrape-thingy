@@ -37,16 +37,17 @@ export class JDownloaderClient {
   }
 
   private async resolveDevice(): Promise<void> {
-    const devices = await this.client.listDevices();
+    const response = await this.client.listDevices();
+    // listDevices() returns { list: [{ id, name, ... }] }
+    const devices: { id: string; name: string }[] = response?.list ?? [];
 
-    if (!devices || devices.length === 0) {
+    if (devices.length === 0) {
       throw new Error('No JDownloader devices found on this MyJDownloader account.');
     }
 
-    // listDevices returns device objects with id and name properties
-    const match = devices.find((d: { id: string; name: string }) => d.name === this.deviceName);
+    const match = devices.find(d => d.name === this.deviceName);
     if (!match) {
-      const available = devices.map((d: { id: string; name: string }) => d.name).join(', ');
+      const available = devices.map(d => d.name).join(', ');
       throw new Error(
         `JDownloader device "${this.deviceName}" not found. Available: ${available}`,
       );
