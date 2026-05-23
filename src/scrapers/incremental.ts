@@ -7,6 +7,27 @@ import type { Config } from '../config';
 
 const STATE_KEY = 'last_incremental_run_at';
 
+/**
+ * Get the episode count from a detail release's options.
+ * The feed doesn't carry this info, so we fetch it from the detail API.
+ */
+async function getEpisodeCountFromDetail(
+  warez: WarezClient,
+  entryUid: string,
+  releaseId: number,
+): Promise<number | null> {
+  try {
+    const detail = await warez.fetchEntryDetail(entryUid);
+    const release = detail.releases?.find(r => r.id === releaseId);
+    if (release?.options?.episode_count_in_season) {
+      return parseInt(String(release.options.episode_count_in_season), 10) || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Detect and warn about releases whose IMDB/TMDB ID matches a watchlist item with a different type */
 function warnTypeMismatches(release: WarezRelease, watchlist: WatchlistRow[], warned: Set<string>): void {
   const opts = release.entry?.options;
@@ -96,8 +117,38 @@ export async function runIncrementalScraper(
 
       for (const watchlistItem of matched) {
         const season = extractSeason(release.fulltitle);
-        const episode = extractEpisode(release.fulltitle);
-        const seasonEpisodeKey = extractSeasonEpisodeKey(release.fulltitle);
+        let episode = extractEpisode(release.fulltitle);
+        let seasonEpisodeKey = extractSeasonEpisodeKey(release.fulltitle);
+
+        // For season packs without individual episode numbers, check episode_count_in_season
+        // from the detail API to determine if there are new episodes
+        if (watchlistItem.Type === 'series' && episode == null) {
+          const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+          // Fetch detail to get the episode count for this release
+          const entryUid = release.entry?.uid ?? release.uid;
+          const episodeCount = await getEpisodeCountFromDetail(warez, entryUid, release.id);
+
+          if (episodeCount != null) {
+            if (episodeCount <= lastEp) {
+              console.log(`  ⏩ Skipped (no new episodes): "${release.fulltitle}" — ${episodeCount} ep(s), last found: ${lastEp}`);
+              continue;
+            }
+            // Use episode count as the episode number for tracking
+            episode = episodeCount;
+            seasonEpisodeKey = seasonEpisodeKey
+              ? `${seasonEpisodeKey}E${String(episodeCount).padStart(2, '0')}`
+              : `E${String(episodeCount).padStart(2, '0')}`;
+          }
+        }
+
+        // For individual episodes (S01E05 style), skip if not higher than LastEpisodeFound
+        if (watchlistItem.Type === 'series' && episode != null) {
+          const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+          if (episode <= lastEp) {
+            console.log(`  ⏩ Skipped (old episode): "${release.fulltitle}" — E${String(episode).padStart(2, '0')}, last found: E${String(lastEp).padStart(2, '0')}`);
+            continue;
+          }
+        }
 
         const match: Omit<MatchRow, 'Id'> = {
           WatchlistId: watchlistItem.Id,

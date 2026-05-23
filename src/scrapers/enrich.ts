@@ -120,12 +120,42 @@ export async function runEnrichScraper(
       }
 
       const season = extractSeason(matchingRelease.fulltitle);
-      const episode = extractEpisode(matchingRelease.fulltitle);
-      const seasonEpisodeKey = extractSeasonEpisodeKey(matchingRelease.fulltitle);
+      let episode = extractEpisode(matchingRelease.fulltitle);
+      let seasonEpisodeKey = extractSeasonEpisodeKey(matchingRelease.fulltitle);
+
+      // For season packs, use episode_count_in_season from the detail release
+      if (watchlistItem.Type === 'series' && episode == null) {
+        const epCount = matchingRelease.options?.episode_count_in_season;
+        if (epCount) {
+          const count = parseInt(String(epCount), 10);
+          if (count > 0) {
+            const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+            if (count <= lastEp) {
+              console.log(`  ⏩ Skipped (no new episodes): "${matchingRelease.fulltitle}" — ${count} ep(s), last found: ${lastEp}`);
+              skipped++;
+              continue;
+            }
+            episode = count;
+            seasonEpisodeKey = seasonEpisodeKey
+              ? `${seasonEpisodeKey}E${String(count).padStart(2, '0')}`
+              : `E${String(count).padStart(2, '0')}`;
+          }
+        }
+      }
+
+      // For individual episodes, skip if not higher than LastEpisodeFound
+      if (watchlistItem.Type === 'series' && episode != null) {
+        const lastEp = watchlistItem.LastEpisodeFound ?? 0;
+        if (episode <= lastEp) {
+          console.log(`  ⏩ Skipped (old episode): "${matchingRelease.fulltitle}" — E${String(episode).padStart(2, '0')}, last found: E${String(lastEp).padStart(2, '0')}`);
+          skipped++;
+          continue;
+        }
+      }
 
       await nocodb.updateMatchRelease(match.Id, {
         WarezId: matchingRelease.id,
-        WarezUid: matchingRelease.uid,
+        // Keep WarezUid as the entry UID (not the release UUID) for future detail API calls
         Fulltitle: matchingRelease.fulltitle,
         Quality: matchingRelease.quality ?? '',
         Lang: JSON.stringify(matchingRelease.lang),
