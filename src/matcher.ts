@@ -58,11 +58,66 @@ export function matchesQuality(releaseQuality: string | null, requiredQuality: s
   return relTier === reqTier;
 }
 
-/** Check if a release includes all required languages */
-export function meetsLanguage(releaseLangs: string[], langRequired: string | undefined | null): boolean {
+/**
+ * Known language tokens in warez fulltitles → normalized language codes.
+ * "DL" (Dual Language) in German scene releases conventionally means GER + ENG.
+ */
+const FULLTITLE_LANG_MAP: Record<string, string[]> = {
+  german: ['GER'],
+  deutsch: ['GER'],
+  english: ['ENG'],
+  french: ['FRE'],
+  spanish: ['SPA'],
+  italian: ['ITA'],
+  dutch: ['DUT'],
+  japanese: ['JPN'],
+  korean: ['KOR'],
+  chinese: ['CHI'],
+  russian: ['RUS'],
+  portuguese: ['POR'],
+  turkish: ['TUR'],
+  arabic: ['ARA'],
+  hindi: ['HIN'],
+  dl: ['GER', 'ENG'],
+  multi: ['GER', 'ENG'],
+};
+
+/**
+ * Extract language codes from a release fulltitle.
+ * Fallback when the API's `lang` array is null or empty.
+ */
+export function extractLangsFromFulltitle(fulltitle: string): string[] {
+  const normalized = fulltitle.toLowerCase().replace(/[._\-]/g, ' ');
+  const langs = new Set<string>();
+  for (const [token, codes] of Object.entries(FULLTITLE_LANG_MAP)) {
+    const pattern = new RegExp(`\\b${token}\\b`, 'i');
+    if (pattern.test(normalized)) {
+      for (const code of codes) langs.add(code);
+    }
+  }
+  return [...langs];
+}
+
+/**
+ * Check if a release includes all required languages.
+ * Falls back to parsing languages from fulltitle when the API lang array is null/empty.
+ */
+export function meetsLanguage(
+  releaseLangs: string[] | null | undefined,
+  langRequired: string | undefined | null,
+  fulltitle?: string,
+): boolean {
   if (!langRequired) return true;
   const required = langRequired.split(',').map(l => l.trim().toUpperCase()).filter(Boolean);
-  const available = releaseLangs.map(l => l.toUpperCase());
+  if (required.length === 0) return true;
+
+  let available = (releaseLangs ?? []).map(l => l.toUpperCase());
+
+  // Fallback: parse language from fulltitle when API lang is missing
+  if (available.length === 0 && fulltitle) {
+    available = extractLangsFromFulltitle(fulltitle).map(l => l.toUpperCase());
+  }
+
   return required.every(req => available.includes(req));
 }
 
@@ -127,7 +182,7 @@ export function matchRelease(release: WarezRelease, watchlistItem: WatchlistRow)
   }
 
   // ── Language filter ─────────────────────────────────────────────────────────
-  if (!meetsLanguage(release.lang, watchlistItem.LangRequired)) {
+  if (!meetsLanguage(release.lang, watchlistItem.LangRequired, release.fulltitle)) {
     return { matched: false, watchlistItem, reason: `missing required langs ${watchlistItem.LangRequired}` };
   }
 

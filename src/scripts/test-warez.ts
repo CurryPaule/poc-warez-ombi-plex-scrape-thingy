@@ -75,7 +75,7 @@ async function main() {
       const imdb = r.entry?.options?.imdb_id ?? '-';
       console.log(`  [${String(r.id).padStart(7)}] [${r.type.padEnd(7)}] ${r.title}`);
       console.log(`           Full  : ${r.fulltitle}`);
-      console.log(`           Parsed: "${extracted}" | Quality: ${r.quality ?? 'n/a'} | Lang: ${r.lang.join(',')}`);
+      console.log(`           Parsed: "${extracted}" | Quality: ${r.quality ?? 'n/a'} | Lang: ${(r.lang ?? []).join(',')}`);
       console.log(`           IMDB: ${imdb} | Group: ${r.group} | Created: ${r.created_at}`);
       console.log();
     }

@@ -25,7 +25,7 @@ function releaseMatchesFilters(
   watchlistItem: WatchlistRow,
 ): boolean {
   if (!matchesQuality(release.quality, watchlistItem.Quality)) return false;
-  if (!meetsLanguage(release.lang, watchlistItem.LangRequired)) return false;
+  if (!meetsLanguage(release.lang, watchlistItem.LangRequired, release.fulltitle)) return false;
   if (!matchesTags(release.fulltitle, watchlistItem.Tags)) return false;
 
   if (watchlistItem.Type === 'series' && watchlistItem.Season != null) {
