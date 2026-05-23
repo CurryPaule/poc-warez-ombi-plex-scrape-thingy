@@ -132,20 +132,52 @@ npm run test:match                            # Dry-run matcher against live dat
 
 ## Docker
 
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- A `.env` file in the project root with your NocoDB credentials (see [Configuration](#configuration))
+
+### Build and run
+
 ```bash
-cd docker
-docker compose up -d
+# From the project root (not the docker/ folder)
+docker compose -f docker/docker-compose.yml build
+
+# Start the container (runs search + enrich immediately, then every 4 hours via cron)
+docker compose -f docker/docker-compose.yml up -d
 ```
 
-Logs are written to the `scraper-logs` volume. To tail them:
+### What happens on startup
+
+1. The container runs **search** then **enrich** sequentially on first boot
+2. A cron job repeats that cycle every 4 hours
+3. The container stays running between cron runs
+
+### Useful commands
 
 ```bash
-docker exec warez-plex-scraper tail -f /var/log/cron-search.log
+# Check if the container is running
+docker ps --filter name=warez-plex-scraper
+
+# Follow the live logs (startup + cron output)
+docker logs -f warez-plex-scraper
+
+# View the cron scrape log inside the container
+docker exec warez-plex-scraper cat /var/log/cron-scrape.log
+
+# Manually trigger a scrape run without waiting for cron
+docker exec warez-plex-scraper /app/run-scrape.sh
+
+# Stop the container
+docker compose -f docker/docker-compose.yml down
+
+# Rebuild after code changes
+docker compose -f docker/docker-compose.yml up -d --build
 ```
 
 ### Connecting to NocoDB in the same Docker network
 
-If NocoDB runs in Docker too, uncomment the `networks` section in `docker/docker-compose.yml` and set `NOCODB_URL` to the container's internal hostname.
+If NocoDB runs in Docker too, uncomment the `networks` section in `docker/docker-compose.yml` and set `NOCODB_URL` to the container's internal hostname (e.g. `http://nocodb:8080`).
 
 ## Matching Logic
 
@@ -183,5 +215,6 @@ docker/
   Dockerfile
   docker-compose.yml
   crontab               Cron schedule
-  entrypoint.sh
+  entrypoint.sh         Container entrypoint (startup + cron daemon)
+  run-scrape.sh         Runs search → enrich sequentially
 ```
