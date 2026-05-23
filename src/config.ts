@@ -14,6 +14,13 @@ const ConfigSchema = z.object({
 
   SEARCH_DELAY_MS: z.coerce.number().int().nonnegative().default(1500),
   DEFAULT_QUALITY: z.enum(['720p', '1080p', '2160p', '']).default(''),
+
+  // JDownloader (optional — required only for `push` mode)
+  JDOWNLOADER_EMAIL: z.string().email().optional(),
+  JDOWNLOADER_PASSWORD: z.string().min(1).optional(),
+  JDOWNLOADER_DEVICE_NAME: z.string().min(1).optional(),
+  JDOWNLOADER_AUTOSTART: z.coerce.boolean().default(false),
+  JDOWNLOADER_HOSTER_PRIORITY: z.string().default('ddownload,rapidgator'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

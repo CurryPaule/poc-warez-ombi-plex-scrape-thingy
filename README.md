@@ -10,18 +10,20 @@ Two scraper modes:
 |---|---|---|
 | `search` | Queries the warez search API for each watchlist item to find media entries | Every 4 hours |
 | `enrich` | Fetches full release detail, applies quality/tags filters, tracks new episodes | Every 4 hours (after search) |
+| `push` | Sends matched downloads to JDownloader via MyJDownloader API | Every 4 hours (after enrich) |
 
 ### Match Status Flow
 
 ```
-found → matched → processed
+found → matched → pushed → processed
 ```
 
 - **`found`** — entry identified by search scraper (no release data yet)
-- **`matched`** — release matches all filters, has download links, ready for downstream
+- **`matched`** — release matches all filters, has download links, ready for push
+- **`pushed`** — links sent to JDownloader successfully
 - **`processed`** — handled by downstream consumer (future)
 
-The **search** scraper writes matches as `found`. The **enrich** scraper promotes them to `matched` after finding a release that passes all filters. It also re-checks `matched` series for new episodes.
+The **search** scraper writes matches as `found`. The **enrich** scraper promotes them to `matched` after finding a release that passes all filters. It also re-checks `matched` series for new episodes. The **push** scraper sends `matched` downloads to JDownloader and transitions them to `pushed`.
 
 ## NocoDB Setup
 
@@ -66,7 +68,7 @@ Create three tables in NocoDB manually:
 | `TmdbId` | Number |
 | `WarezCreatedAt` | DateTime |
 | `MatchedAt` | DateTime |
-| `Status` | Single Select: `found`, `matched`, `processed` |
+| `Status` | Single Select: `found`, `matched`, `pushed`, `processed` |
 
 ### `scraper_state`
 | Field | Type |
@@ -92,6 +94,11 @@ Key variables:
 | `NOCODB_MATCHES_TABLE_ID` | Same for matches table |
 | `NOCODB_STATE_TABLE_ID` | Same for state table |
 | `SEARCH_DELAY_MS` | Delay between API queries in ms (default 1500) |
+| `JDOWNLOADER_EMAIL` | MyJDownloader account email (required for `push` mode) |
+| `JDOWNLOADER_PASSWORD` | MyJDownloader account password (required for `push` mode) |
+| `JDOWNLOADER_DEVICE_NAME` | JDownloader device name (required for `push` mode) |
+| `JDOWNLOADER_AUTOSTART` | Auto-start downloads in JDownloader (default: `false`) |
+| `JDOWNLOADER_HOSTER_PRIORITY` | Comma-separated hoster preference (default: `ddownload,rapidgator`) |
 
 ### Finding your NocoDB Table IDs
 
@@ -114,11 +121,13 @@ cp .env.example .env
 # Run in dev mode (no build step needed)
 npx ts-node src/index.ts search        # search for watchlist items
 npx ts-node src/index.ts enrich        # enrich found matches & check for new episodes
+npx ts-node src/index.ts push          # push matched downloads to JDownloader
 
 # Or build first, then run
 npm run build
 npm run start -- search
 npm run start -- enrich
+npm run start -- push
 ```
 
 ### Test scripts
@@ -128,6 +137,7 @@ npm run test:warez                            # Test warez.cx API connectivity
 npm run test:warez -- --search "Breaking Bad" # Test search with a query
 npm run test:nocodb                           # Test NocoDB connection
 npm run test:match                            # Dry-run matcher against live data
+npm run test:jdownloader                      # Test MyJDownloader connectivity
 ```
 
 ## Docker
@@ -149,7 +159,7 @@ docker compose -f docker/docker-compose.yml up -d
 
 ### What happens on startup
 
-1. The container runs **search** then **enrich** sequentially on first boot
+1. The container runs **search** → **enrich** → **push** sequentially on first boot
 2. A cron job repeats that cycle every 4 hours
 3. The container stays running between cron runs
 
@@ -211,10 +221,13 @@ src/
   scrapers/
     search.ts           Search-based scraper
     enrich.ts           Detail enrichment + episode tracking scraper
+    push.ts             JDownloader push scraper
+  jdownloader/
+    client.ts           MyJDownloader API wrapper
 docker/
   Dockerfile
   docker-compose.yml
   crontab               Cron schedule
   entrypoint.sh         Container entrypoint (startup + cron daemon)
-  run-scrape.sh         Runs search → enrich sequentially
+  run-scrape.sh         Runs search → enrich → push sequentially
 ```

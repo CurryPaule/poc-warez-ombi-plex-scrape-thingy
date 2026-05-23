@@ -1,10 +1,12 @@
 import { loadConfig } from './config';
 import { NocoDbClient } from './nocodb/client';
 import { WarezClient } from './warez/api';
+import { JDownloaderClient } from './jdownloader/client';
 import { runSearchScraper } from './scrapers/search';
 import { runEnrichScraper } from './scrapers/enrich';
+import { runPushScraper } from './scrapers/push';
 
-const MODES = ['search', 'enrich'] as const;
+const MODES = ['search', 'enrich', 'push'] as const;
 type Mode = typeof MODES[number];
 
 function printUsage(): void {
@@ -12,6 +14,7 @@ function printUsage(): void {
   console.log('Modes:');
   console.log('  search       — search for each watchlist item');
   console.log('  enrich       — enrich "found" matches and check series for new episodes');
+  console.log('  push         — push "matched" downloads to JDownloader');
 }
 
 async function main(): Promise<void> {
@@ -31,6 +34,14 @@ async function main(): Promise<void> {
       await runSearchScraper(warez, nocodb, config);
     } else if (mode === 'enrich') {
       await runEnrichScraper(warez, nocodb, config);
+    } else if (mode === 'push') {
+      const jdownloader = new JDownloaderClient(config);
+      try {
+        await jdownloader.connect();
+        await runPushScraper(jdownloader, nocodb, config);
+      } finally {
+        await jdownloader.disconnect();
+      }
     }
   } catch (err) {
     console.error('❌ Fatal error:', err);

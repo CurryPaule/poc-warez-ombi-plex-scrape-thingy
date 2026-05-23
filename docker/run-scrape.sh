@@ -11,4 +11,7 @@ node /app/dist/index.js search || echo "[$(date -Iseconds)] Search scraper faile
 echo "[$(date -Iseconds)] Running enrich scraper..."
 node /app/dist/index.js enrich || echo "[$(date -Iseconds)] Enrich scraper failed (non-fatal)"
 
+echo "[$(date -Iseconds)] Running push scraper..."
+node /app/dist/index.js push || echo "[$(date -Iseconds)] Push scraper failed (non-fatal)"
+
 echo "[$(date -Iseconds)] Scrape run complete"
