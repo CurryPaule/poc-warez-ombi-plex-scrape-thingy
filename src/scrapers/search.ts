@@ -5,9 +5,7 @@ import type { WarezSearchEntry } from '../warez/types';
 import type { Config } from '../config';
 import {
   normalizeTitle,
-  matchesQuality,
   meetsLanguage,
-  matchesTags,
 } from '../matcher';
 
 /**
@@ -33,23 +31,19 @@ function sleep(ms: number): Promise<void> {
  * Reuses shared filter functions from matcher.ts.
  *
  * Note: search entries are entry-level (no quality, no release-specific fulltitle),
- * so items with Quality or Tags set will not match via search — those require
- * the incremental scraper which has release-level detail.
+ * so Quality and Tags filters are NOT applied here — those are enforced by the
+ * incremental scraper which has release-level detail.
  */
 function entryMatchesWatchlistItem(entry: WarezSearchEntry, item: WatchlistRow): boolean {
   // Type must match
   if (item.Type && entry.type !== item.Type) return false;
 
-  // Quality filter — search entries have no quality info, so if a specific
-  // quality is required, we can't verify it and must skip
-  if (!matchesQuality(null, item.Quality)) return false;
-
-  // Language filter
+  // Language filter — search entries do carry language info
   if (!meetsLanguage(entry.lang ?? [], item.LangRequired)) return false;
 
-  // Tags filter — search entry fulltitles are just titles (e.g. "Dutton Ranch"),
-  // not release names, so tags like HDR/H265/uploader won't match
-  if (!matchesTags(entry.fulltitle, item.Tags)) return false;
+  // Quality and Tags are intentionally NOT checked here:
+  // search entries have no quality field and their fulltitle is just the
+  // media title (e.g. "Dutton Ranch"), not a release name with codec/format info.
 
   // ID-based match (most reliable)
   if (item.ImdbId && entry.options?.imdb_id) {
