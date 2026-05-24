@@ -7,10 +7,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/** Delay in ms to wait for JDownloader to resolve container links */
-const LINKGRABBER_RESOLVE_DELAY_MS = 10000;
+/** Delay in ms between polls for JDownloader to resolve container links */
+const LINKGRABBER_RESOLVE_DELAY_MS = 2000;
 /** Max attempts to poll linkgrabber for resolved links */
-const LINKGRABBER_POLL_MAX_ATTEMPTS = 6;
+const LINKGRABBER_POLL_MAX_ATTEMPTS = 15;
 
 /**
  * Build a metadata-encoded download path for JDownloader.
