@@ -108,20 +108,31 @@ export class JDownloaderClient {
 
   /**
    * Remove specific links from the linkgrabber by their UUIDs.
+   * Bypasses the library's removeLinks which is missing the packageIds param.
    */
   async removeLinks(linkIds: number[]): Promise<void> {
     if (linkIds.length === 0) return;
-    await this.client.linkgrabberV2.removeLinks(this.deviceId, linkIds as any);
+    // The JD API requires both linkIds and packageIds params
+    const params = JSON.stringify({ linkIds, packageIds: [] });
+    await (this.client as any).callAction(
+      '/linkgrabberv2/removeLinks',
+      this.deviceId,
+      [params],
+    );
   }
 
   /**
    * Move links from linkgrabber to the download list (starts them).
    */
   async moveToDownloadList(linkIds?: number[], packageIds?: number[]): Promise<void> {
-    await this.client.linkgrabberV2.moveToDownloadlist(
+    const params = JSON.stringify({
+      linkIds: linkIds ?? [],
+      packageIds: packageIds ?? [],
+    });
+    await (this.client as any).callAction(
+      '/linkgrabberv2/moveToDownloadlist',
       this.deviceId,
-      linkIds as any,
-      packageIds as any,
+      [params],
     );
   }
 }
