@@ -8,7 +8,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Delay in ms between polls for JDownloader to resolve container links */
-const LINKGRABBER_RESOLVE_DELAY_MS = 2000;
+const LINKGRABBER_RESOLVE_DELAY_MS = 1000;
 /** Max attempts to poll linkgrabber for resolved links */
 const LINKGRABBER_POLL_MAX_ATTEMPTS = 15;
 
