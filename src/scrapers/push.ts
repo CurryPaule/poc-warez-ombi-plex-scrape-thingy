@@ -145,14 +145,15 @@ export async function runPushScraper(
 
         // Poll linkgrabber for resolved links matching this package
         const episodePattern = buildEpisodePattern(match.Season, match.Episode!);
+        // Build a prefix to identify links from this release (e.g., "From.S04" from "From.S04.GERMAN.DL...")
+        const releasePrefix = packageName.split('.').slice(0, 2).join('.').toLowerCase();
         let resolved = false;
 
         for (let attempt = 0; attempt < LINKGRABBER_POLL_MAX_ATTEMPTS; attempt++) {
           const links = await jdownloader.queryLinks();
-          // Find links that belong to our package (by name pattern from fulltitle)
+          // Find links belonging to this release by filename prefix
           const packageLinks = links.filter(l =>
-            l.name.toLowerCase().includes(packageName.toLowerCase().split('.')[0]!) ||
-            l.packageUUID !== ''
+            l.name.toLowerCase().startsWith(releasePrefix)
           );
 
           if (packageLinks.length === 0) {

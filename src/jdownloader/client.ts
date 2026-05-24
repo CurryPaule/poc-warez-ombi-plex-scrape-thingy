@@ -95,44 +95,39 @@ export class JDownloaderClient {
       packageUUID: true,
       bytesTotal: true,
     });
-    // Response may be an array directly or { data: [...] }
+    // Response is { data: [...], rid: ... }
     const items: any[] = Array.isArray(result) ? result : ((result as any)?.data ?? []);
     return items.map((link: any) => ({
       uuid: link.uuid,
       name: link.name ?? '',
       url: link.url ?? '',
-      packageUUID: link.packageUUID ?? '',
+      packageUUID: String(link.packageUUID ?? ''),
       size: link.bytesTotal ?? 0,
     }));
   }
 
   /**
    * Remove specific links from the linkgrabber by their UUIDs.
-   * Bypasses the library's removeLinks which is missing the packageIds param.
+   * JD API expects positional params: [linkIds[], packageIds[]]
    */
   async removeLinks(linkIds: number[]): Promise<void> {
     if (linkIds.length === 0) return;
-    // The JD API requires both linkIds and packageIds params
-    const params = JSON.stringify({ linkIds, packageIds: [] });
     await (this.client as any).callAction(
       '/linkgrabberv2/removeLinks',
       this.deviceId,
-      [params],
+      [linkIds, []],
     );
   }
 
   /**
    * Move links from linkgrabber to the download list (starts them).
+   * JD API expects positional params: [linkIds[], packageIds[]]
    */
   async moveToDownloadList(linkIds?: number[], packageIds?: number[]): Promise<void> {
-    const params = JSON.stringify({
-      linkIds: linkIds ?? [],
-      packageIds: packageIds ?? [],
-    });
     await (this.client as any).callAction(
       '/linkgrabberv2/moveToDownloadlist',
       this.deviceId,
-      [params],
+      [linkIds ?? [], packageIds ?? []],
     );
   }
 }
