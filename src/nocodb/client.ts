@@ -184,7 +184,8 @@ export class NocoDbClient {
    */
   async getMatchByImdbId(imdbId: string): Promise<(MatchRow & { Id: number }) | null> {
     const where = `(ImdbId,eq,${imdbId})`;
-    const url = `${this.tablePath(this.matchesTableId)}/records?where=${where}&sort=-MatchedAt&limit=1`;
+    const sort = encodeURIComponent(JSON.stringify([{ field: 'MatchedAt', direction: 'desc' }]));
+    const url = `${this.tablePath(this.matchesTableId)}/records?where=${where}&sort=${sort}&limit=1`;
     const data = await this.request<NocoDbV3ListResponse<MatchRow>>('GET', url);
     if (data.records.length === 0) return null;
     return this.flatten(data.records[0]!);
@@ -199,7 +200,8 @@ export class NocoDbClient {
     seasonEpisodeKey: string,
   ): Promise<(MatchRow & { Id: number }) | null> {
     const where = `(ImdbId,eq,${imdbId})~and(SeasonEpisodeKey,eq,${seasonEpisodeKey})`;
-    const url = `${this.tablePath(this.matchesTableId)}/records?where=${where}&sort=-MatchedAt&limit=1`;
+    const sort = encodeURIComponent(JSON.stringify([{ field: 'MatchedAt', direction: 'desc' }]));
+    const url = `${this.tablePath(this.matchesTableId)}/records?where=${where}&sort=${sort}&limit=1`;
     const data = await this.request<NocoDbV3ListResponse<MatchRow>>('GET', url);
     if (data.records.length === 0) return null;
     return this.flatten(data.records[0]!);
