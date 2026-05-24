@@ -110,34 +110,6 @@ function getEpisodeCount(release: WarezDetailRelease): number | null {
 }
 
 /**
- * Compute the delta between current release links and previously stored links.
- * Returns only the URLs that are new (not in the previously stored set).
- */
-function computeDeltaLinks(
-  currentLinks: Record<string, string[]>,
-  previousLinksJson: string | undefined,
-): Record<string, string[]> {
-  let previousLinks: Record<string, string[]> = {};
-  if (previousLinksJson) {
-    try {
-      previousLinks = JSON.parse(previousLinksJson);
-    } catch {
-      previousLinks = {};
-    }
-  }
-
-  const delta: Record<string, string[]> = {};
-  for (const [hoster, urls] of Object.entries(currentLinks)) {
-    const previousUrls = new Set(previousLinks[hoster] ?? []);
-    const newUrls = urls.filter(url => !previousUrls.has(url));
-    if (newUrls.length > 0) {
-      delta[hoster] = newUrls;
-    }
-  }
-  return delta;
-}
-
-/**
  * Process a single match against available releases.
  * Returns true if the match was enriched/updated, false if skipped.
  */
@@ -225,40 +197,13 @@ async function processMatch(
     }
   }
 
-  // For re-checks (new episodes), store only the delta links and clear crypted links
-  // so the push scraper sends only the new episode parts to JDownloader.
-  const linksToStore = isRecheck
-    ? computeDeltaLinks(onlineLinks, match.Links)
-    : onlineLinks;
-  const cryptedLinksToStore = isRecheck ? {} : onlineCryptedLinks;
-
-  // If re-check produced an empty delta, the stored links already cover all current URLs.
-  // Skip the update to avoid wiping existing links (no new download parts to push).
-  if (isRecheck && Object.keys(linksToStore).length === 0) {
-    console.log(`  ⏩ No new download links for "${matchingRelease.fulltitle}" — episode count increased but links unchanged`);
-    // Still update episode tracking so we don't re-check this episode count again
-    if (episode != null && watchlistItem.Type === 'series') {
-      const current = watchlistItem.LastEpisodeFound ?? 0;
-      if (episode > current) {
-        await nocodb.updateWatchlistEpisode(watchlistItem.Id, episode);
-      }
-    }
-    if (episode != null) {
-      await nocodb.updateMatchRelease(match.Id, {
-        Episode: episode,
-        SeasonEpisodeKey: seasonEpisodeKey ?? undefined,
-      });
-    }
-    return 'skipped';
-  }
-
   await nocodb.updateMatchRelease(match.Id, {
     WarezId: matchingRelease.id,
     Fulltitle: matchingRelease.fulltitle,
     Quality: matchingRelease.quality ?? '',
     Lang: JSON.stringify(matchingRelease.lang),
-    Links: JSON.stringify(linksToStore),
-    CryptedLinks: JSON.stringify(cryptedLinksToStore),
+    Links: JSON.stringify(onlineLinks),
+    CryptedLinks: JSON.stringify(onlineCryptedLinks),
     SizeBytes: matchingRelease.size,
     ReleaseGroup: matchingRelease.group,
     Season: season ?? undefined,
