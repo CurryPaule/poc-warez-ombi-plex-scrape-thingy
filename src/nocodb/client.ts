@@ -178,6 +178,35 @@ export class NocoDbClient {
     return false;
   }
 
+  /**
+   * Find a match record by IMDB ID. Used by the sort step to look up metadata.
+   * Returns the most recent match (by MatchedAt) for the given IMDB ID.
+   */
+  async getMatchByImdbId(imdbId: string): Promise<(MatchRow & { Id: number }) | null> {
+    const where = `(ImdbId,eq,${imdbId})`;
+    const sort = encodeURIComponent(JSON.stringify([{ field: 'MatchedAt', direction: 'desc' }]));
+    const url = `${this.tablePath(this.matchesTableId)}/records?where=${where}&sort=${sort}&limit=1`;
+    const data = await this.request<NocoDbV3ListResponse<MatchRow>>('GET', url);
+    if (data.records.length === 0) return null;
+    return this.flatten(data.records[0]!);
+  }
+
+  /**
+   * Find a match record by IMDB ID and SeasonEpisodeKey.
+   * Used by sort to find the exact episode match.
+   */
+  async getMatchByImdbIdAndEpisode(
+    imdbId: string,
+    seasonEpisodeKey: string,
+  ): Promise<(MatchRow & { Id: number }) | null> {
+    const where = `(ImdbId,eq,${imdbId})~and(SeasonEpisodeKey,eq,${seasonEpisodeKey})`;
+    const sort = encodeURIComponent(JSON.stringify([{ field: 'MatchedAt', direction: 'desc' }]));
+    const url = `${this.tablePath(this.matchesTableId)}/records?where=${where}&sort=${sort}&limit=1`;
+    const data = await this.request<NocoDbV3ListResponse<MatchRow>>('GET', url);
+    if (data.records.length === 0) return null;
+    return this.flatten(data.records[0]!);
+  }
+
   // ─── Watchlist updates ───────────────────────────────────────────────────────
 
   async updateWatchlistLastMatched(id: number, timestamp: string): Promise<void> {

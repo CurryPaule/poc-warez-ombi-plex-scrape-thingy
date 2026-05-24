@@ -8,6 +8,26 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Build a metadata-encoded download path for JDownloader.
+ * Format: {imdbId}-{type}[-S{season}E{episode}]
+ * This path is used as the package subfolder so JDownloader's webhook
+ * carries the metadata back when the download completes.
+ */
+function buildMetadataPath(match: MatchRow): string {
+  const parts: string[] = [];
+
+  const imdbId = match.ImdbId || 'unknown';
+  parts.push(imdbId);
+  parts.push(match.Type || 'movie');
+
+  if (match.SeasonEpisodeKey) {
+    parts.push(match.SeasonEpisodeKey);
+  }
+
+  return parts.join('-');
+}
+
+/**
  * Select a crypted container link from a match record based on hoster priority.
  * CryptedLinks is a JSON-serialized Record<string, string> (hoster → container URL).
  * JDownloader can resolve the actual download links from the container URL.
@@ -85,12 +105,14 @@ export async function runPushScraper(
     }
 
     const packageName = match.Fulltitle || match.Title;
+    const metadataPath = buildMetadataPath(match);
 
     try {
       await jdownloader.pushLinks({
         links: [selected.url],
         packageName,
         autostart: config.JDOWNLOADER_AUTOSTART,
+        destinationFolder: metadataPath,
       });
 
       await nocodb.updateMatchRelease(match.Id, {

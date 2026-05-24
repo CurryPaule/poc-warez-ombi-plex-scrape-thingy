@@ -5,6 +5,7 @@ export interface PushLinksOptions {
   links: string[];
   packageName: string;
   autostart: boolean;
+  destinationFolder?: string;
 }
 
 /**
@@ -72,6 +73,7 @@ export class JDownloaderClient {
     await this.client.linkgrabberV2.addLinks(this.deviceId, options.links, {
       packageName: options.packageName,
       autostart: options.autostart,
+      ...(options.destinationFolder ? { destinationFolder: options.destinationFolder } : {}),
     });
   }
 }

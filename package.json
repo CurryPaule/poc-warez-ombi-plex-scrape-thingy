@@ -7,15 +7,13 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "scrape:search": "ts-node src/index.ts search",
-    "scrape:enrich": "ts-node src/index.ts enrich",
-    "scrape:push": "ts-node src/index.ts push",
     "test:warez": "ts-node src/scripts/test-warez.ts",
     "test:nocodb": "ts-node src/scripts/test-nocodb.ts",
     "test:match": "ts-node src/scripts/test-match.ts",
     "test:jdownloader": "ts-node src/scripts/test-jdownloader.ts"
   },
   "dependencies": {
+    "fastify": "^5.8.5",
     "myjdownloader": "^1.1.0",
     "playwright": "^1.44.0",
     "zod": "^3.23.0"

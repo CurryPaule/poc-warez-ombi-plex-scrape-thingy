@@ -3,10 +3,10 @@ set -e
 
 echo "=== WarezPlexThingy starting ==="
 
-# Run search + enrich once at startup to catch up
-echo "[startup] Running initial scrape..."
-/app/run-scrape.sh || echo "[startup] Initial scrape failed (non-fatal)"
-
-# Start cron daemon in foreground
+# Start cron daemon in background
 echo "[startup] Starting cron daemon..."
-crond -f -l 2
+crond -l 2
+
+# Start the API server (foreground)
+echo "[startup] Starting API server..."
+exec node /app/dist/index.js

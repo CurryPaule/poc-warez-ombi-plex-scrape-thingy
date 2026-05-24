@@ -10,7 +10,7 @@ RUN npm run build
 # ── Runtime image ──────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
 
-RUN apk add --no-cache dcron
+RUN apk add --no-cache dcron curl
 
 WORKDIR /app
 COPY package*.json ./
@@ -21,7 +21,7 @@ RUN npx playwright install chromium --with-deps 2>/dev/null || true
 
 COPY --from=builder /app/dist ./dist
 
-# Copy scrape runner script
+# Copy cron runner script
 COPY docker/run-scrape.sh /app/run-scrape.sh
 RUN chmod +x /app/run-scrape.sh
 
@@ -31,5 +31,7 @@ COPY docker/crontab /etc/crontabs/root
 # Entrypoint script
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+EXPOSE 3000
 
 ENTRYPOINT ["/entrypoint.sh"]

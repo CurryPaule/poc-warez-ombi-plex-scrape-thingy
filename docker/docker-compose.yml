@@ -5,6 +5,8 @@ services:
       dockerfile: docker/Dockerfile
     container_name: warez-plex-scraper
     restart: unless-stopped
+    ports:
+      - "${API_PORT:-3000}:3000"
     env_file:
       - ../.env
     volumes:
