@@ -232,6 +232,26 @@ async function processMatch(
     : onlineLinks;
   const cryptedLinksToStore = isRecheck ? {} : onlineCryptedLinks;
 
+  // If re-check produced an empty delta, the stored links already cover all current URLs.
+  // Skip the update to avoid wiping existing links (no new download parts to push).
+  if (isRecheck && Object.keys(linksToStore).length === 0) {
+    console.log(`  ⏩ No new download links for "${matchingRelease.fulltitle}" — episode count increased but links unchanged`);
+    // Still update episode tracking so we don't re-check this episode count again
+    if (episode != null && watchlistItem.Type === 'series') {
+      const current = watchlistItem.LastEpisodeFound ?? 0;
+      if (episode > current) {
+        await nocodb.updateWatchlistEpisode(watchlistItem.Id, episode);
+      }
+    }
+    if (episode != null) {
+      await nocodb.updateMatchRelease(match.Id, {
+        Episode: episode,
+        SeasonEpisodeKey: seasonEpisodeKey ?? undefined,
+      });
+    }
+    return 'skipped';
+  }
+
   await nocodb.updateMatchRelease(match.Id, {
     WarezId: matchingRelease.id,
     Fulltitle: matchingRelease.fulltitle,
