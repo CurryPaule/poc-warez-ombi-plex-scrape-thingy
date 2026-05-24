@@ -95,7 +95,9 @@ export class JDownloaderClient {
       packageUUID: true,
       bytesTotal: true,
     });
-    return (result ?? []).map((link: any) => ({
+    // Response may be an array directly or { data: [...] }
+    const items: any[] = Array.isArray(result) ? result : ((result as any)?.data ?? []);
+    return items.map((link: any) => ({
       uuid: link.uuid,
       name: link.name ?? '',
       url: link.url ?? '',
