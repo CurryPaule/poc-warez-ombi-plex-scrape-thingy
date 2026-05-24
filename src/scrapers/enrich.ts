@@ -16,6 +16,69 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Timeout in ms for each hoster online-check request */
+const ONLINE_CHECK_TIMEOUT_MS = 5000;
+
+/**
+ * Check if a single hoster's links are online by fetching the hide.cx state SVG.
+ * Returns true (online) only when the response contains stroke="green".
+ * Any error, timeout, or unparsable response is treated as offline.
+ */
+async function isHosterOnline(stateUrl: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ONLINE_CHECK_TIMEOUT_MS);
+    const response = await fetch(stateUrl, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) return false;
+    const body = await response.text();
+    return body.includes('stroke="green"');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a release has at least one online hoster.
+ * Uses the `options.check` URLs that return SVGs with stroke color indicating status.
+ * Returns the list of online hoster names, or an empty array if all are offline.
+ */
+async function getOnlineHosters(release: WarezDetailRelease): Promise<string[]> {
+  const checkUrls = release.options?.check;
+  if (!checkUrls || Object.keys(checkUrls).length === 0) {
+    // No check info available — assume online (don't block releases without check data)
+    return Object.keys(release.links ?? {});
+  }
+
+  const results = await Promise.all(
+    Object.entries(checkUrls).map(async ([hoster, url]) => ({
+      hoster,
+      online: await isHosterOnline(url),
+    })),
+  );
+
+  return results.filter(r => r.online).map(r => r.hoster);
+}
+
+/**
+ * Filter a release's links/cryptedLinks to only include online hosters.
+ * Returns a new links & cryptedLinks with offline hosters removed.
+ */
+function filterLinksToOnlineHosters(
+  release: WarezDetailRelease,
+  onlineHosters: string[],
+): { links: Record<string, string[]>; cryptedLinks: Record<string, string> } {
+  const links: Record<string, string[]> = {};
+  const cryptedLinks: Record<string, string> = {};
+
+  for (const hoster of onlineHosters) {
+    if (release.links[hoster]) links[hoster] = release.links[hoster];
+    if (release.crypted_links[hoster]) cryptedLinks[hoster] = release.crypted_links[hoster];
+  }
+
+  return { links, cryptedLinks };
+}
+
 /**
  * Check if a detail release matches a watchlist item's filters.
  * Applies Quality, Tags, Language, and Season checks.
@@ -57,9 +120,11 @@ async function processMatch(
   nocodb: NocoDbClient,
   isRecheck: boolean,
 ): Promise<'enriched' | 'updated' | 'skipped'> {
-  const matchingRelease = releases.find(r => releaseMatchesFilters(r, watchlistItem));
+  // Find all releases matching filters, then pick the first one with online hosters.
+  // Multiple entries with the same fulltitle but different user_ids are "mirrors".
+  const candidateReleases = releases.filter(r => releaseMatchesFilters(r, watchlistItem));
 
-  if (!matchingRelease) {
+  if (candidateReleases.length === 0) {
     if (!isRecheck) {
       const filters = [
         watchlistItem.Quality ? `Q:${watchlistItem.Quality}` : null,
@@ -68,6 +133,28 @@ async function processMatch(
       ].filter(Boolean).join(', ');
       console.log(`  ⏳ No matching release for "${match.Title}" (filters: ${filters || 'none'})`);
     }
+    return 'skipped';
+  }
+
+  // Check online status for each candidate and pick the first one with online hosters
+  let matchingRelease: WarezDetailRelease | null = null;
+  let onlineLinks: Record<string, string[]> = {};
+  let onlineCryptedLinks: Record<string, string> = {};
+
+  for (const candidate of candidateReleases) {
+    const onlineHosters = await getOnlineHosters(candidate);
+    if (onlineHosters.length > 0) {
+      matchingRelease = candidate;
+      const filtered = filterLinksToOnlineHosters(candidate, onlineHosters);
+      onlineLinks = filtered.links;
+      onlineCryptedLinks = filtered.cryptedLinks;
+      break;
+    }
+    console.log(`  ⛔ Offline: "${candidate.fulltitle}" (user ${candidate.user_id}) — all hosters down`);
+  }
+
+  if (!matchingRelease) {
+    console.log(`  ⛔ All ${candidateReleases.length} matching release(s) for "${match.Title}" are offline`);
     return 'skipped';
   }
 
@@ -115,8 +202,8 @@ async function processMatch(
     Fulltitle: matchingRelease.fulltitle,
     Quality: matchingRelease.quality ?? '',
     Lang: JSON.stringify(matchingRelease.lang),
-    Links: JSON.stringify(matchingRelease.links),
-    CryptedLinks: JSON.stringify(matchingRelease.crypted_links),
+    Links: JSON.stringify(onlineLinks),
+    CryptedLinks: JSON.stringify(onlineCryptedLinks),
     SizeBytes: matchingRelease.size,
     ReleaseGroup: matchingRelease.group,
     Season: season ?? undefined,
@@ -226,7 +313,7 @@ export async function runEnrichScraper(
       const result = await processMatch(match, releases, watchlistItem, nocodb, isRecheck);
       if (result === 'enriched') {
         enriched++;
-        console.log(`  ✅ Enriched: [${watchlistItem.Title}] ← "${match.Title}" (${releases.find(r => releaseMatchesFilters(r, watchlistItem))?.quality})`);
+        console.log(`  ✅ Enriched: [${watchlistItem.Title}] ← "${match.Title}"`);
       } else if (result === 'updated') {
         updated++;
         console.log(`  🆕 New episodes: [${watchlistItem.Title}] — updated with latest release data`);

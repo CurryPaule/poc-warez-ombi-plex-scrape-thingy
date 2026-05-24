@@ -25,7 +25,7 @@ This is a TypeScript scraping solution that monitors **warez.cx** for movies and
 
 1. **Search** (`/start/search`): Proactively searches for watchlist items. Returns **entry-level** results (media titles) — no download links, no episode info. IMDB IDs (e.g. `tt0903747`) work as search queries; TMDB IDs (numeric) do not. Writes matches as `found`.
 
-2. **Enrich** (`/start/d/:uid`): Fetches full detail (all releases) for `found` matches. Applies Quality/Tags/Language filters against individual releases and promotes matching records to `matched` with full release data. Also re-checks `matched` series for new episodes.
+2. **Enrich** (`/start/d/:uid`): Fetches full detail (all releases) for `found` matches. Applies Quality/Tags/Language filters against individual releases, checks hoster online status via `hide.cx/state/` SVG endpoints (skipping offline releases and mirrors), and promotes matching records to `matched` with only online hosters' links. Also re-checks `matched` series for new episodes.
 
 3. **Push**: Sends `matched` downloads to JDownloader with metadata-encoded download paths (`{imdbId}-{type}[-{seasonEpisodeKey}]`). Transitions matches to `pushed`.
 
@@ -153,7 +153,7 @@ src/
 │   └── types.ts           # WatchlistRow, MatchRow, ScraperStateRow, v3 response types
 ├── scrapers/
 │   ├── search.ts          # Search-based scraper with entry-level matching
-│   ├── enrich.ts          # Detail enrichment + episode tracking scraper (found → matched)
+│   ├── enrich.ts          # Detail enrichment + online check + episode tracking (found → matched)
 │   ├── push.ts            # JDownloader push scraper with metadata path encoding
 │   └── sort.ts            # Media sorter — moves downloads to Plex/Jellyfin dirs via FileBrowser
 ├── filebrowser/
@@ -222,6 +222,7 @@ npm run build && npm start                  # Production mode
 - **`/start/release` `q` param is non-functional** — it always returns the latest feed regardless of query value. Search must use `/start/search`.
 - **Search returns entry-level results** (1 per media title) with no download links. Download links come from `/start/d/:uid` (detail API) or `/start/release` (feed).
 - **Detail API (`/start/d/:uid`)** returns the full entry with all releases (download links, quality, codec, size, group, `episode_count_in_season`). No auth required. Used by the enrichment scraper.
+- **Online/Offline check** — each release has `options.check` with per-hoster URLs (`https://hide.cx/state/{uuid}`) returning SVGs. `stroke="green"` = online, `stroke="red"` = offline. The enricher checks these with a 5s timeout and skips releases where all hosters are offline, falling back to mirrors (same fulltitle, different uploader) if available.
 - **WarezUid vs Release UUID** — search entries have short UIDs like `bZaytSlvMxuK` (entry UID, used for `/start/d/{uid}`). Detail releases have UUIDs like `5f0a05fc-...` (release UID). The enrich scraper must NOT overwrite `WarezUid` with the release UUID, or re-enrichment breaks.
 - **NocoDB Tags field** — multi-select returns an **array**, not a comma-separated string. `matchesTags()` handles both formats.
 - **NocoDB SingleSelect columns** require options to be explicitly configured via the meta API. The `dtxp` parameter during column creation doesn't always apply.
