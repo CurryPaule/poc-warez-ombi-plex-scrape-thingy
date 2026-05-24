@@ -8,18 +8,65 @@ This is a TypeScript scraping solution that monitors **warez.cx** for movies and
 
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
-│  warez.cx    │────▶│  Scraper (TS)    │────▶│  NocoDB      │
+│  warez.cx    │────▶│  Fastify API     │────▶│  NocoDB      │
 │  REST API    │     │  - search        │     │  - watchlist  │
 │              │     │  - enrich        │     │  - matches    │
-└──────────────┘     └──────────────────┘     │  - state      │
-                                               └──────────────┘
+└──────────────┘     │  - push          │     │  - state      │
+                     │  - sort          │     └──────────────┘
+                     └──────┬───────────┘
+                            │        │
+                     ┌──────▼──┐  ┌──▼───────────┐
+                     │JDownload│  │ FileBrowser   │
+                     │  er     │  │ (file ops)    │
+                     └─────────┘  └───────────────┘
 ```
 
-### Two Scraping Modes
+### Scraping Modes
 
 1. **Search** (`/start/search`): Proactively searches for watchlist items. Returns **entry-level** results (media titles) — no download links, no episode info. IMDB IDs (e.g. `tt0903747`) work as search queries; TMDB IDs (numeric) do not. Writes matches as `found`.
 
 2. **Enrich** (`/start/d/:uid`): Fetches full detail (all releases) for `found` matches. Applies Quality/Tags/Language filters against individual releases and promotes matching records to `matched` with full release data. Also re-checks `matched` series for new episodes.
+
+3. **Push**: Sends `matched` downloads to JDownloader with metadata-encoded download paths (`{imdbId}-{type}[-{seasonEpisodeKey}]`). Transitions matches to `pushed`.
+
+4. **Sort**: Webhook target for JDownloader. Receives relative download path, looks up match in NocoDB, moves video + subtitle files to Plex/Jellyfin directory structure via FileBrowser API. Transitions matches to `processed`.
+
+### REST API
+
+All modes are exposed via a Fastify REST API server (replaces the old CLI entry point):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/search` | Run search scraper |
+| POST | `/api/enrich` | Run enrichment scraper |
+| POST | `/api/push` | Push matched downloads to JDownloader |
+| POST | `/api/workflow` | Run full pipeline: search → enrich → push |
+| POST | `/api/sort` | Sort a completed download (JDownloader webhook target) |
+| GET  | `/api/health` | Health check |
+
+The sort endpoint accepts `{ "downloadPath": "tt1234567-movie/Release.Name" }` — a relative path that gets combined with `FILEBROWSER_DOWNLOAD_PATH` to form the full FileBrowser API path.
+
+### FileBrowser Integration
+
+File operations (list, create dirs, move, delete) are performed via FileBrowser's REST API:
+- **Auth**: JWT token via `X-Auth` header (not Bearer)
+- **Move**: `PATCH /api/resources/{path}?action=rename&destination={newPath}` (query params, not body)
+- **Create dir**: `POST /api/resources/{path}/`
+- **List**: `GET /api/resources/{path}`
+
+### Media Sorting Rules
+
+**Movies**: `{MEDIA_MOVIES_PATH}/Movie Title (year)/Fulltitle.From.Matches.Table.mkv`
+- Video file is renamed to the fulltitle from the matches table
+- Year extracted from fulltitle
+
+**TV Shows**: `{MEDIA_SHOWS_PATH}/Show Title (year)/S01/release.mkv`
+- Without subtitles: video files directly in season directory
+- With subtitles: `S01/S01E02.Episode.Name/release.mkv + subs/subtitle.srt`
+
+**Excluded**: Sample files (name contains "sample" or inside `/sample/` directory)
+**Video formats**: mkv, mp4, avi, m4v, wmv, flv, mov, ts
+**Subtitle formats**: srt, sub, ass, ssa, vtt, idx
 
 ### NocoDB Integration
 
@@ -48,14 +95,15 @@ This is a TypeScript scraping solution that monitors **warez.cx** for movies and
 ### Match Status State Machine
 
 ```
-found → matched → processed
+found → matched → pushed → processed
 ```
 
 | Status | Meaning |
 |---|---|
 | `found` | Entry identified by search scraper. No release-level data yet. Awaiting enrichment. |
-| `matched` | A specific release matches all filters. Has download links. Ready for downstream. |
-| `processed` | Handled by downstream consumer (future). |
+| `matched` | A specific release matches all filters. Has download links. Ready for push. |
+| `pushed` | Links sent to JDownloader. Download path encoded with metadata. Awaiting download completion. |
+| `processed` | Download sorted into media library by the sort step. |
 
 ## Deduplication
 
@@ -94,17 +142,24 @@ For series, the enrichment scraper tracks episodes via `episode_count_in_season`
 ```
 src/
 ├── config.ts              # Zod-validated env config with .env parsing
-├── index.ts               # CLI entry: `node dist/index.js <search|enrich>`
+├── index.ts               # Entry point: starts the Fastify API server
+├── server.ts              # Fastify REST API with all endpoints
 ├── matcher.ts             # Title normalization, ID matching, quality/lang/season/episode/tags filters
 ├── warez/
 │   ├── api.ts             # WarezClient: searchEntries(), fetchEntryDetail(), fetchReleases() (test scripts)
 │   └── types.ts           # WarezRelease, WarezSearchEntry, WarezEntryDetail, response types
 ├── nocodb/
-│   ├── client.ts          # NocoDbClient: watchlist CRUD, match upsert/update with dedup, state KV
+│   ├── client.ts          # NocoDbClient: watchlist CRUD, match upsert/update with dedup, state KV, IMDB lookup
 │   └── types.ts           # WatchlistRow, MatchRow, ScraperStateRow, v3 response types
 ├── scrapers/
 │   ├── search.ts          # Search-based scraper with entry-level matching
-│   └── enrich.ts          # Detail enrichment + episode tracking scraper (found → matched)
+│   ├── enrich.ts          # Detail enrichment + episode tracking scraper (found → matched)
+│   ├── push.ts            # JDownloader push scraper with metadata path encoding
+│   └── sort.ts            # Media sorter — moves downloads to Plex/Jellyfin dirs via FileBrowser
+├── filebrowser/
+│   └── client.ts          # FileBrowser REST API client (X-Auth JWT, list/create/move/delete)
+├── jdownloader/
+│   └── client.ts          # MyJDownloader API wrapper
 └── scripts/
     ├── test-warez.ts      # API connectivity test (--search "query")
     ├── test-nocodb.ts     # NocoDB connection validator
@@ -126,14 +181,13 @@ npm run test:warez -- --search "Breaking Bad"  # Test search
 npm run test:nocodb                         # Test NocoDB connection
 npm run test:match                          # Dry-run matcher
 
-# Run scrapers
-npx ts-node src/index.ts search             # Search for all watchlist items
-npx ts-node src/index.ts enrich             # Enrich found matches & check for new episodes
+# Start the API server
+npm run dev                                 # Dev mode (ts-node)
+npm run build && npm start                  # Production mode
 
-# Build for production
-npm run build
-npm run start -- search
-npm run start -- enrich
+# Trigger scrapers via HTTP (server must be running)
+# curl.exe -X POST http://localhost:3000/api/workflow
+# curl.exe -X POST http://localhost:3000/api/sort -H "Content-Type: application/json" -d '{"downloadPath":"tt1234567-movie/Release.Name"}'
 ```
 
 ## Environment Variables
@@ -149,6 +203,18 @@ npm run start -- enrich
 | `WAREZ_API_BASE` | ❌ | Default: `https://api.warez.cx` |
 | `SEARCH_DELAY_MS` | ❌ | Default: 1500 |
 | `DEFAULT_QUALITY` | ❌ | Default: (empty = any) |
+| `API_PORT` | ❌ | Default: 3000 |
+| `JDOWNLOADER_EMAIL` | For push | MyJDownloader email |
+| `JDOWNLOADER_PASSWORD` | For push | MyJDownloader password |
+| `JDOWNLOADER_DEVICE_NAME` | For push | Device name in MyJDownloader |
+| `JDOWNLOADER_AUTOSTART` | ❌ | Default: false |
+| `JDOWNLOADER_HOSTER_PRIORITY` | ❌ | Default: `ddownload,rapidgator` |
+| `FILEBROWSER_URL` | For sort | FileBrowser instance URL |
+| `FILEBROWSER_USERNAME` | For sort | FileBrowser login |
+| `FILEBROWSER_PASSWORD` | For sort | FileBrowser password |
+| `FILEBROWSER_DOWNLOAD_PATH` | For sort | Download dir path in FileBrowser |
+| `MEDIA_MOVIES_PATH` | For sort | Movies dir path in FileBrowser |
+| `MEDIA_SHOWS_PATH` | For sort | TV shows dir path in FileBrowser |
 
 ## Important Technical Notes
 
@@ -168,13 +234,12 @@ cd docker
 docker compose up -d
 ```
 
-Cron schedule (configured in `docker/crontab`):
-- Every 4 hours: search scraper
-- Every 4 hours (15 min offset): enrichment scraper
+The container runs the Fastify API server as the main process with cron in the background.
+Cron calls `POST /api/workflow` every 4 hours via curl.
+The API server is exposed on port 3000 (configurable via `API_PORT`).
 
 ## Future Work
 
 - [ ] Ombi webhook integration to auto-populate watchlist
 - [ ] Notification system (webhook/email) for new matches
 - [ ] Episode-aware notifications (only alert for new episodes)
-- [ ] Downstream consumer for `processed` status (download automation)
