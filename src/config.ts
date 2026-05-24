@@ -21,6 +21,17 @@ const ConfigSchema = z.object({
   JDOWNLOADER_DEVICE_NAME: z.string().min(1).optional(),
   JDOWNLOADER_AUTOSTART: z.coerce.boolean().default(false),
   JDOWNLOADER_HOSTER_PRIORITY: z.string().default('ddownload,rapidgator'),
+
+  // REST API server
+  API_PORT: z.coerce.number().int().positive().default(3000),
+
+  // FileBrowser (optional — required only for `sort` mode)
+  FILEBROWSER_URL: z.string().url().optional(),
+  FILEBROWSER_USERNAME: z.string().min(1).optional(),
+  FILEBROWSER_PASSWORD: z.string().min(1).optional(),
+  FILEBROWSER_DOWNLOAD_PATH: z.string().min(1).optional(), // e.g. "/downloads"
+  MEDIA_MOVIES_PATH: z.string().min(1).optional(),          // e.g. "/media/movies"
+  MEDIA_SHOWS_PATH: z.string().min(1).optional(),           // e.g. "/media/shows"
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

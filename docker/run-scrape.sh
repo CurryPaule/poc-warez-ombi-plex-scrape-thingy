@@ -1,17 +1,15 @@
 #!/bin/sh
 set -e
 
+API_PORT="${API_PORT:-3000}"
+API_URL="http://localhost:${API_PORT}"
+
 echo "============================================"
-echo "[$(date -Iseconds)] Scrape run starting"
+echo "[$(date -Iseconds)] Scrape run starting (via API)"
 echo "============================================"
 
-echo "[$(date -Iseconds)] Running search scraper..."
-node /app/dist/index.js search || echo "[$(date -Iseconds)] Search scraper failed (non-fatal)"
-
-echo "[$(date -Iseconds)] Running enrich scraper..."
-node /app/dist/index.js enrich || echo "[$(date -Iseconds)] Enrich scraper failed (non-fatal)"
-
-echo "[$(date -Iseconds)] Running push scraper..."
-node /app/dist/index.js push || echo "[$(date -Iseconds)] Push scraper failed (non-fatal)"
+echo "[$(date -Iseconds)] Running workflow (search → enrich → push)..."
+curl -s -X POST "${API_URL}/api/workflow" | head -c 500
+echo ""
 
 echo "[$(date -Iseconds)] Scrape run complete"
