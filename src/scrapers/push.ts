@@ -65,12 +65,50 @@ function selectCryptedLink(
 }
 
 /**
+ * Select direct download links from a match record based on hoster priority.
+ * Links is a JSON-serialized Record<string, string[]> (hoster → URL array).
+ * Used as fallback when CryptedLinks is empty (e.g., re-checked series with delta links).
+ */
+function selectDirectLinks(
+  linksJson: string | undefined,
+  hosterPriority: string[],
+): { urls: string[]; hoster: string } | null {
+  if (!linksJson) return null;
+
+  let links: Record<string, string[]>;
+  try {
+    links = JSON.parse(linksJson);
+  } catch {
+    return null;
+  }
+
+  if (!links || typeof links !== 'object') return null;
+
+  // Try hosters in priority order
+  for (const hoster of hosterPriority) {
+    const normalized = hoster.trim().toLowerCase();
+    const matchingKey = Object.keys(links).find(k => k.toLowerCase().includes(normalized));
+    if (matchingKey && links[matchingKey]?.length > 0) {
+      return { urls: links[matchingKey], hoster: matchingKey };
+    }
+  }
+
+  // Fallback: use first available hoster with links
+  for (const [hoster, urls] of Object.entries(links)) {
+    if (urls?.length > 0) return { urls, hoster };
+  }
+
+  return null;
+}
+
+/**
  * Push scraper: sends `matched` records to JDownloader and transitions them to `pushed`.
  *
  * Workflow:
  * 1. Fetch all matches with status "matched"
  * 2. For each match, select a crypted container link by hoster priority
- * 3. Push the container URL to JDownloader (it resolves the actual download links)
+ *    (or fall back to direct links for re-checked series with delta links)
+ * 3. Push the link(s) to JDownloader
  * 4. On success: update status to "pushed"
  * 5. On failure: log warning, skip (stays "matched" for retry next run)
  */
@@ -97,9 +135,10 @@ export async function runPushScraper(
 
   for (const match of matched) {
     const selected = selectCryptedLink(match.CryptedLinks, hosterPriority);
+    const direct = !selected ? selectDirectLinks(match.Links, hosterPriority) : null;
 
-    if (!selected) {
-      console.log(`  ⚠ No crypted links found for "${match.Fulltitle}" — skipping`);
+    if (!selected && !direct) {
+      console.log(`  ⚠ No links found for "${match.Fulltitle}" — skipping`);
       skipped++;
       continue;
     }
@@ -108,19 +147,30 @@ export async function runPushScraper(
     const metadataPath = buildMetadataPath(match);
 
     try {
-      await jdownloader.pushLinks({
-        links: [selected.url],
-        packageName,
-        autostart: config.JDOWNLOADER_AUTOSTART,
-        destinationFolder: metadataPath,
-      });
+      if (selected) {
+        await jdownloader.pushLinks({
+          links: [selected.url],
+          packageName,
+          autostart: config.JDOWNLOADER_AUTOSTART,
+          destinationFolder: metadataPath,
+        });
+        pushed++;
+        console.log(`  ✅ Pushed: "${packageName}" (container via ${selected.hoster})`);
+      } else {
+        await jdownloader.pushLinks({
+          links: direct!.urls,
+          packageName,
+          autostart: config.JDOWNLOADER_AUTOSTART,
+          destinationFolder: metadataPath,
+        });
+        pushed++;
+        console.log(`  ✅ Pushed: "${packageName}" (${direct!.urls.length} direct link(s) via ${direct!.hoster})`);
+      }
 
       await nocodb.updateMatchRelease(match.Id, {
         Status: 'pushed',
       });
 
-      pushed++;
-      console.log(`  ✅ Pushed: "${packageName}" (via ${selected.hoster})`);
     } catch (err) {
       failed++;
       console.warn(`  ⚠ Push failed for "${packageName}":`, err instanceof Error ? err.message : err);

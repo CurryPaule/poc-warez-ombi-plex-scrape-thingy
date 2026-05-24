@@ -110,6 +110,34 @@ function getEpisodeCount(release: WarezDetailRelease): number | null {
 }
 
 /**
+ * Compute the delta between current release links and previously stored links.
+ * Returns only the URLs that are new (not in the previously stored set).
+ */
+function computeDeltaLinks(
+  currentLinks: Record<string, string[]>,
+  previousLinksJson: string | undefined,
+): Record<string, string[]> {
+  let previousLinks: Record<string, string[]> = {};
+  if (previousLinksJson) {
+    try {
+      previousLinks = JSON.parse(previousLinksJson);
+    } catch {
+      previousLinks = {};
+    }
+  }
+
+  const delta: Record<string, string[]> = {};
+  for (const [hoster, urls] of Object.entries(currentLinks)) {
+    const previousUrls = new Set(previousLinks[hoster] ?? []);
+    const newUrls = urls.filter(url => !previousUrls.has(url));
+    if (newUrls.length > 0) {
+      delta[hoster] = newUrls;
+    }
+  }
+  return delta;
+}
+
+/**
  * Process a single match against available releases.
  * Returns true if the match was enriched/updated, false if skipped.
  */
@@ -197,13 +225,20 @@ async function processMatch(
     }
   }
 
+  // For re-checks (new episodes), store only the delta links and clear crypted links
+  // so the push scraper sends only the new episode parts to JDownloader.
+  const linksToStore = isRecheck
+    ? computeDeltaLinks(onlineLinks, match.Links)
+    : onlineLinks;
+  const cryptedLinksToStore = isRecheck ? {} : onlineCryptedLinks;
+
   await nocodb.updateMatchRelease(match.Id, {
     WarezId: matchingRelease.id,
     Fulltitle: matchingRelease.fulltitle,
     Quality: matchingRelease.quality ?? '',
     Lang: JSON.stringify(matchingRelease.lang),
-    Links: JSON.stringify(onlineLinks),
-    CryptedLinks: JSON.stringify(onlineCryptedLinks),
+    Links: JSON.stringify(linksToStore),
+    CryptedLinks: JSON.stringify(cryptedLinksToStore),
     SizeBytes: matchingRelease.size,
     ReleaseGroup: matchingRelease.group,
     Season: season ?? undefined,
