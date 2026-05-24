@@ -119,8 +119,19 @@ function buildShowDestination(
 }
 
 /**
+ * Check if a file is a sample (common in movie releases — should be skipped).
+ * Matches files with "sample" in the name or inside a "sample" directory.
+ */
+function isSampleFile(item: FileBrowserItem): boolean {
+  const pathLower = item.path.toLowerCase();
+  const nameLower = item.name.toLowerCase();
+  return nameLower.includes('sample') || pathLower.includes('/sample/');
+}
+
+/**
  * Categorize files from a download directory into video files and subtitle files.
  * Subtitles can be next to video files or in a subs/ subdirectory.
+ * Sample files are excluded.
  */
 function categorizeFiles(items: FileBrowserItem[]): {
   videos: FileBrowserItem[];
@@ -130,6 +141,8 @@ function categorizeFiles(items: FileBrowserItem[]): {
   const subtitles: FileBrowserItem[] = [];
 
   for (const item of items) {
+    if (isSampleFile(item)) continue;
+
     if (isVideoFile(item.name)) {
       videos.push(item);
     } else if (isSubtitleFile(item.name)) {
@@ -160,8 +173,8 @@ export async function sortDownload(
   downloadDirName: string,
   scanPath?: string,
 ): Promise<SortResult> {
-  const moviesPath = config.MEDIA_MOVIES_PATH;
-  const showsPath = config.MEDIA_SHOWS_PATH;
+  const moviesPath = config.MEDIA_MOVIES_PATH?.replace(/\/+$/, '');
+  const showsPath = config.MEDIA_SHOWS_PATH?.replace(/\/+$/, '');
   if (!moviesPath || !showsPath) {
     return { success: false, movedFiles: [], destination: '', error: 'MEDIA_MOVIES_PATH and MEDIA_SHOWS_PATH must be configured' };
   }
