@@ -243,14 +243,16 @@ export async function sortDownload(
   const movedFiles: string[] = [];
 
   if (metadata.type === 'movie') {
-    // Movies: just create the movie dir and move video + subs
+    // Movies: create the movie dir, rename video to fulltitle, move video + subs
     await fb.createDir(destination);
 
     for (const video of videos) {
-      const dest = `${destination}/${video.name}`;
+      const ext = getExtension(video.name);
+      const renamedName = `${matchRecord.Fulltitle}${ext}`;
+      const dest = `${destination}/${renamedName}`;
       await fb.move(video.path, dest);
       movedFiles.push(dest);
-      console.log(`     ✅ Moved: ${video.name}`);
+      console.log(`     ✅ Moved: ${video.name} → ${renamedName}`);
     }
 
     for (const sub of subtitles) {
