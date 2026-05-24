@@ -183,17 +183,120 @@ Same pagination wrapper as `/start/release`, but `data` contains `WarezSearchEnt
 
 ---
 
-### 3. Detail Page (Unknown API endpoint)
+### 3. `/start/d/:uid` — Entry Detail (All Releases)
 
-The SPA detail page at `https://warez.cx/detail/{uid}/{slug}` shows all releases for a specific media entry. This loads releases with download links for a single entry.
+Returns the **full entry** with all releases including download links, quality, codec, and episode info. This is the backend for the detail page at `https://warez.cx/detail/{uid}/{slug}`.
 
-**Status: Endpoint not yet discovered.** The detail page is loaded via a lazy-loaded JS chunk, making the API call difficult to trace statically. Playwright browser interception is needed to discover the exact endpoint.
+#### Request
 
-**Tested and failed:**
-- `/entry/{uid}` — 404
-- `/start/entry/{uid}` — 404
-- `/start/detail/{uid}` — 404
-- `/release?entry_id={id}` — 404
+```
+GET /start/d/{uid}
+```
+
+No authentication required. `uid` is the entry-level UID from search results (e.g. `2okbWEppZrfL`), NOT a release UUID.
+
+#### Response
+
+```jsonc
+{
+  "__e": null,
+  "__s": null,
+  "cdn": true,
+  "se": true,
+  "item": {
+    "id": 36402,
+    "uid": "2okbWEppZrfL",
+    "type": "movie",
+    "sub_type": "movie",
+    "title": "Extrawurst",
+    "original_title": "Extrawurst",
+    "lang": ["GER"],
+    "genre": ["Komödie", "Drama"],
+    "options": { /* WarezEntryOptions — imdb_id, tmdb_id, etc. */ },
+    "releases": [ /* WarezDetailRelease[] */ ],
+    "badges": [ /* quality/format badges */ ],
+    // ... additional metadata (actors, backdrops, etc.)
+  }
+}
+```
+
+#### WarezDetailRelease Object
+
+```typescript
+{
+  id: number;
+  uid: string;               // Release UUID (NOT the entry UID)
+  user_id: number;
+  entry_id: number;
+  title: string;
+  fulltitle: string;         // "Movie.2026.German.1080p.WEB.H264-GROUP"
+  type: string;
+  sub_type: string;
+  links: Record<string, string[]>;
+  crypted_links: Record<string, string>;
+  size: number;
+  parts: number;
+  group: string;
+  quality: string | null;
+  video_stream: string | null;
+  video_codec: string | null;
+  audio_stream: string | null;
+  lang: string[] | null;
+  downloads: number;
+  source: string;
+  options: {
+    check?: Record<string, string>;  // Hoster online-check URLs (see below)
+    season?: string | null;
+    episode?: string | null;
+    episode_count_in_season?: string | null;
+  };
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  display_priority: number;
+  has_new_episode: boolean;
+}
+```
+
+**Key observations:**
+- Multiple releases per entry — different qualities, codecs, groups
+- Multiple uploads of the same release by different users are "mirrors" (same fulltitle, different `user_id`)
+- `episode_count_in_season` tracks total episodes for season packs
+- ⚠ The release `uid` is a UUID (e.g. `371b57ed-...`), NOT the entry UID — do NOT use it for `/start/d/` lookups
+
+---
+
+### 4. Online/Offline Check — `hide.cx/state/:uuid`
+
+Each release has per-hoster online status check URLs in `options.check`. The frontend loads these to display green/red status icons.
+
+#### Request
+
+```
+GET https://hide.cx/state/{container-uuid}
+```
+
+#### Response
+
+Returns an **SVG image** (not JSON):
+- **Online**: SVG with `stroke="green"` (checkmark icon)
+- **Offline**: SVG with `stroke="red"` (X icon)
+
+#### Example
+
+```json
+"options": {
+  "check": {
+    "rapidgator.net": "https://hide.cx/state/2cdc450a-ca27-418d-a1b8-77e596d24a96",
+    "ddownload.com": "https://hide.cx/state/2bf66411-3c3b-4018-a486-19204103c9ae"
+  }
+}
+```
+
+**Usage in enrichment scraper:**
+- A release is considered "online" if **at least one** hoster returns `stroke="green"`
+- Requests use a 5-second timeout; any timeout or unparsable response is treated as offline
+- Only online hosters' links are stored in the match record
 
 ---
 
