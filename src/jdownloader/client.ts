@@ -8,6 +8,14 @@ export interface PushLinksOptions {
   destinationFolder?: string;
 }
 
+export interface CrawledLink {
+  uuid: number;
+  name: string;
+  url: string;
+  packageUUID: string;
+  size: number;
+}
+
 /**
  * Wrapper around the myjdownloader library.
  * Handles connect/disconnect lifecycle and device resolution by name.
@@ -75,5 +83,51 @@ export class JDownloaderClient {
       autostart: options.autostart,
       ...(options.destinationFolder ? { destinationFolder: options.destinationFolder } : {}),
     });
+  }
+
+  /**
+   * Query all links currently in the linkgrabber.
+   */
+  async queryLinks(): Promise<CrawledLink[]> {
+    const result = await this.client.linkgrabberV2.queryLinks(this.deviceId, {
+      name: true,
+      url: true,
+      packageUUID: true,
+      bytesTotal: true,
+    });
+    // Response is { data: [...], rid: ... }
+    const items: any[] = Array.isArray(result) ? result : ((result as any)?.data ?? []);
+    return items.map((link: any) => ({
+      uuid: link.uuid,
+      name: link.name ?? '',
+      url: link.url ?? '',
+      packageUUID: String(link.packageUUID ?? ''),
+      size: link.bytesTotal ?? 0,
+    }));
+  }
+
+  /**
+   * Remove specific links from the linkgrabber by their UUIDs.
+   * JD API expects positional params: [linkIds[], packageIds[]]
+   */
+  async removeLinks(linkIds: number[]): Promise<void> {
+    if (linkIds.length === 0) return;
+    await (this.client as any).callAction(
+      '/linkgrabberv2/removeLinks',
+      this.deviceId,
+      [linkIds, []],
+    );
+  }
+
+  /**
+   * Move links from linkgrabber to the download list (starts them).
+   * JD API expects positional params: [linkIds[], packageIds[]]
+   */
+  async moveToDownloadList(linkIds?: number[], packageIds?: number[]): Promise<void> {
+    await (this.client as any).callAction(
+      '/linkgrabberv2/moveToDownloadlist',
+      this.deviceId,
+      [linkIds ?? [], packageIds ?? []],
+    );
   }
 }

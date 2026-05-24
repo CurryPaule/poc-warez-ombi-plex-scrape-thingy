@@ -233,7 +233,7 @@ async function processMatch(
 /**
  * Enrichment scraper:
  * 1. Processes "found" matches — applies Quality/Tags/Language filters, promotes to "matched"
- * 2. Re-checks "matched" series — detects new episodes via episode_count_in_season
+ * 2. Re-checks series (matched/pushed/processed) — detects new episodes via episode_count_in_season
  */
 export async function runEnrichScraper(
   warez: WarezClient,
@@ -245,16 +245,15 @@ export async function runEnrichScraper(
   // Phase 1: Enrich "found" matches
   const foundMatches = await nocodb.getMatchesByStatus('found');
 
-  // Phase 2: Re-check "matched" series for new episodes
-  const matchedAll = await nocodb.getMatchesByStatus('matched');
-  const matchedSeries = matchedAll.filter(m => m.Type === 'series');
+  // Phase 2: Re-check series for new episodes (matched, pushed, or processed)
+  const recheckSeries = await nocodb.getSeriesMatchesForRecheck();
 
   const allMatches = [
     ...foundMatches.map(m => ({ match: m, isRecheck: false })),
-    ...matchedSeries.map(m => ({ match: m, isRecheck: true })),
+    ...recheckSeries.map(m => ({ match: m, isRecheck: true })),
   ];
 
-  console.log(`  Found: ${foundMatches.length} to enrich, ${matchedSeries.length} series to re-check`);
+  console.log(`  Found: ${foundMatches.length} to enrich, ${recheckSeries.length} series to re-check`);
 
   if (allMatches.length === 0) {
     console.log('  Nothing to do.');

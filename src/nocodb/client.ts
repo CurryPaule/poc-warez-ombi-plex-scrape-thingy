@@ -99,6 +99,24 @@ export class NocoDbClient {
   }
 
   /**
+   * Get all series matches eligible for episode re-checking.
+   * Includes matched, pushed, and processed statuses — new episodes can appear at any stage.
+   */
+  async getSeriesMatchesForRecheck(): Promise<(MatchRow & { Id: number })[]> {
+    const results: (MatchRow & { Id: number })[] = [];
+    const where = '(Type,eq,series)~and((Status,eq,matched)~or(Status,eq,pushed)~or(Status,eq,processed))';
+    let url: string | null = `${this.tablePath(this.matchesTableId)}/records?where=${where}&limit=100`;
+
+    while (url) {
+      const data: NocoDbV3ListResponse<MatchRow> = await this.request('GET', url);
+      results.push(...data.records.map((r: NocoDbV3Record<MatchRow>) => this.flatten(r)));
+      url = data.next ?? null;
+    }
+
+    return results;
+  }
+
+  /**
    * Get the set of WatchlistIds that already have an active match (found or matched).
    * Used by the search scraper to skip items that don't need re-searching.
    */
