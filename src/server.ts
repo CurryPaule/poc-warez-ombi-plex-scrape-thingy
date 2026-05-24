@@ -14,6 +14,19 @@ import { sortDownload, parseDownloadMetadata as parseDownloadMetadataCheck } fro
 export function buildServer(config: Config): FastifyInstance {
   const app = Fastify({ logger: true });
 
+  // Accept any content type for POST requests (handles empty bodies from curl/PowerShell)
+  app.addContentTypeParser('*', function (_req, payload, done) {
+    let data = '';
+    payload.on('data', (chunk: Buffer) => { data += chunk; });
+    payload.on('end', () => {
+      try {
+        done(null, data ? JSON.parse(data) : {});
+      } catch {
+        done(null, data);
+      }
+    });
+  });
+
   const nocodb = new NocoDbClient(config);
   const warez = new WarezClient(config);
 
