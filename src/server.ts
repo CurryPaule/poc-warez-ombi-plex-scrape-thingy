@@ -9,7 +9,7 @@ import { FileBrowserClient } from './filebrowser/client';
 import { runSearchScraper } from './scrapers/search';
 import { runEnrichScraper } from './scrapers/enrich';
 import { runPushScraper } from './scrapers/push';
-import { sortDownload } from './scrapers/sort';
+import { sortDownload, parseDownloadMetadata as parseDownloadMetadataCheck } from './scrapers/sort';
 
 export function buildServer(config: Config): FastifyInstance {
   const app = Fastify({ logger: true });
@@ -126,7 +126,7 @@ export function buildServer(config: Config): FastifyInstance {
 
   interface SortBody {
     downloadPath?: string;   // directory name containing metadata, e.g. "tt1234567-movie"
-    downloadDir?: string;    // full path in FileBrowser, e.g. "/downloads/tt1234567-movie"
+    downloadDir?: string;    // full path from JDownloader, e.g. "/output/tt1234567-movie/Release.Name"
   }
 
   app.post('/api/sort', async (req: FastifyRequest<{ Body: SortBody }>, reply: FastifyReply) => {
@@ -140,22 +140,37 @@ export function buildServer(config: Config): FastifyInstance {
       };
     }
 
-    // Extract the directory name from whichever field was provided
-    let dirName: string;
-    let basePath: string | undefined;
+    // Parse the full path to find the metadata-encoded directory segment.
+    // JDownloader creates: /output/{metadataDir}/{releaseName}/files
+    // We need to find which path segment matches the metadata pattern.
+    const fullPath = (downloadDir || downloadPath)!.replace(/\/+$/, '');
+    const segments = fullPath.split('/').filter(Boolean);
 
-    if (downloadDir) {
-      // Full path provided — split into base and dir name
-      const parts = downloadDir.replace(/\/+$/, '').split('/');
-      dirName = parts.pop()!;
-      basePath = parts.join('/') || undefined;
-    } else {
-      dirName = downloadPath!.replace(/\/+$/, '').split('/').pop()!;
+    let metadataDirName: string | undefined;
+    let scanPath: string | undefined;
+
+    // Walk segments to find the metadata-encoded dir (e.g. "tt1234567-movie")
+    for (let i = 0; i < segments.length; i++) {
+      const parsed = parseDownloadMetadataCheck(segments[i]!);
+      if (parsed) {
+        metadataDirName = segments[i]!;
+        // The full path from root up to (and including) the last segment is what we scan for files
+        scanPath = '/' + segments.slice(0, segments.length).join('/');
+        break;
+      }
+    }
+
+    if (!metadataDirName) {
+      reply.status(400);
+      return {
+        status: 'error',
+        error: `No metadata directory found in path "${fullPath}". Expected a segment like "tt1234567-movie" or "tt1234567-series-S02E05".`,
+      };
     }
 
     try {
       const fb = new FileBrowserClient(config);
-      const result = await sortDownload(fb, nocodb, config, dirName, basePath);
+      const result = await sortDownload(fb, nocodb, config, metadataDirName, scanPath!);
 
       if (result.success) {
         return {

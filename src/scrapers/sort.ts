@@ -158,13 +158,8 @@ export async function sortDownload(
   nocodb: NocoDbClient,
   config: Config,
   downloadDirName: string,
-  downloadBasePath?: string,
+  scanPath?: string,
 ): Promise<SortResult> {
-  const basePath = downloadBasePath || config.FILEBROWSER_DOWNLOAD_PATH;
-  if (!basePath) {
-    return { success: false, movedFiles: [], destination: '', error: 'FILEBROWSER_DOWNLOAD_PATH not configured' };
-  }
-
   const moviesPath = config.MEDIA_MOVIES_PATH;
   const showsPath = config.MEDIA_SHOWS_PATH;
   if (!moviesPath || !showsPath) {
@@ -182,7 +177,15 @@ export async function sortDownload(
     };
   }
 
-  console.log(`  📂 Sorting download: ${downloadDirName}`);
+  // Determine the directory to scan for files
+  // scanPath is the full path provided (e.g. "/output/tt36586751-movie/Release.Name")
+  // If not provided, fall back to FILEBROWSER_DOWNLOAD_PATH + dirName
+  const downloadDir = scanPath || `${config.FILEBROWSER_DOWNLOAD_PATH}/${downloadDirName}`;
+  if (!downloadDir) {
+    return { success: false, movedFiles: [], destination: '', error: 'No scan path and FILEBROWSER_DOWNLOAD_PATH not configured' };
+  }
+
+  console.log(`  📂 Sorting download: ${downloadDir}`);
   console.log(`     IMDB: ${metadata.imdbId}, Type: ${metadata.type}, Key: ${metadata.seasonEpisodeKey || 'n/a'}`);
 
   // Look up match in NocoDB
@@ -205,7 +208,6 @@ export async function sortDownload(
   console.log(`     Match found: "${matchRecord.Fulltitle}" (ID: ${matchRecord.Id})`);
 
   // List all files in the download directory recursively
-  const downloadDir = `${basePath}/${downloadDirName}`;
   const allFiles = await fb.listDirRecursive(downloadDir);
   const { videos, subtitles } = categorizeFiles(allFiles);
 
@@ -291,10 +293,24 @@ export async function sortDownload(
   });
   console.log(`     📋 Updated match status to "processed"`);
 
-  // Try to clean up the empty source directory
+  // Try to clean up empty source directories (release dir, then metadata dir)
   try {
     await fb.delete(downloadDir);
     console.log(`     🗑️ Cleaned up source directory: ${downloadDir}`);
+
+    // Also try to clean up the metadata parent dir if it's now empty
+    const parentDir = downloadDir.replace(/\/[^/]+\/?$/, '');
+    if (parentDir && parentDir !== downloadDir) {
+      try {
+        const remaining = await fb.listDir(parentDir);
+        if (remaining.length === 0) {
+          await fb.delete(parentDir);
+          console.log(`     🗑️ Cleaned up metadata directory: ${parentDir}`);
+        }
+      } catch {
+        // Parent dir cleanup is best-effort
+      }
+    }
   } catch {
     console.log(`     ⚠ Could not delete source directory (may not be empty): ${downloadDir}`);
   }
