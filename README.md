@@ -69,6 +69,33 @@ shows/
           subtitle.srt
 ```
 
+### JDownloader EventScripter Setup
+
+The sort endpoint is triggered automatically by a JDownloader EventScripter script. In JDownloader, go to **Settings → EventScripter** and add a new script with trigger **"Archive extraction finished"** (*Archiv-Entpacken beendet*):
+
+```javascript
+// Trigger: Archive extraction finished (Archiv-Entpacken beendet)
+
+if (archive.getExtractionStatus() == "SUCCESSFUL") {
+  // Strip the "/output/" prefix from the extraction path
+  var rawFolder = archive.getFolder().toString();
+  var cleanPath = rawFolder.replace(/^\/?output\//, "");
+
+  var payloadObj = { downloadPath: cleanPath };
+  var jsonPayload = JSON.stringify(payloadObj);
+
+  try {
+    // Replace with your server's IP/hostname (not localhost if JD runs in Docker)
+    var response = postPage("http://your-server:3000/api/sort", jsonPayload);
+    log("[EventScripter] Webhook sent. Response: " + response);
+  } catch (error) {
+    log("[EventScripter] Webhook error: " + error.toString());
+  }
+}
+```
+
+> **Note:** Replace the URL with your actual server address. If JDownloader runs in Docker, use the host's IP — not `localhost`.
+
 ## NocoDB Setup
 
 Create three tables in NocoDB manually:
