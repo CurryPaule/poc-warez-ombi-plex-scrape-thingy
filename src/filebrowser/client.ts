@@ -166,18 +166,14 @@ export class FileBrowserClient {
     const normalizedDest = destPath.startsWith('/') ? destPath : `/${destPath}`;
     const token = await this.ensureToken();
 
-    // FileBrowser uses PATCH with action + destination for moves
-    const url = `${this.baseUrl}/api/resources${normalized}`;
+    // FileBrowser uses PATCH with action and destination as query parameters
+    const encodedDest = encodeURIComponent(normalizedDest);
+    const url = `${this.baseUrl}/api/resources${encodeURI(normalized)}?action=rename&destination=${encodedDest}`;
     const response = await fetch(url, {
       method: 'PATCH',
       headers: {
         'X-Auth': token,
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        action: 'rename',
-        destination: normalizedDest,
-      }),
     });
 
     if (!response.ok) {
